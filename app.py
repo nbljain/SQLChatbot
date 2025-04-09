@@ -47,7 +47,13 @@ def display_results(results: Dict[str, Any]) -> None:
         
         # Convert to DataFrame for better display
         df = pd.DataFrame(data)
-        st.dataframe(df, use_container_width=True)
+        
+        # Add styling to the dataframe
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True
+        )
         
         # Show row count
         st.caption(f"Found {len(data)} {'row' if len(data) == 1 else 'rows'}")
@@ -105,7 +111,7 @@ for i, chat in enumerate(st.session_state.chat_history):
                 
                 if "data" in chat and chat["data"]:
                     df = pd.DataFrame(chat["data"])
-                    st.dataframe(df, use_container_width=True)
+                    st.dataframe(df, use_container_width=True, hide_index=True)
                     st.caption(f"Found {len(chat['data'])} {'row' if len(chat['data']) == 1 else 'rows'}")
                 elif "error" in chat:
                     st.error(chat["error"])
