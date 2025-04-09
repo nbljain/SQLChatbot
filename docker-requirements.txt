@@ -1,0 +1,16 @@
+anthropic==0.15.0
+cryptography==42.0.2
+fastapi==0.109.0
+langchain==0.1.1
+langchain-openai==0.0.5
+openai==1.14.0
+pandas==2.1.4
+plotly==5.18.0
+psycopg2-binary==2.9.9
+pydantic==2.5.3
+python-multipart==0.0.6
+requests==2.31.0
+sqlalchemy==2.0.27
+streamlit==1.27.2
+uvicorn==0.24.0
+python-dotenv==1.0.0

@@ -41,7 +41,7 @@ class QueryResponse(BaseModel):
     sql: Optional[str] = None
     data: Optional[List[Dict[str, Any]]] = None
     explanation: Optional[str] = None
-    insights: Optional[str] = None
+    insights: Optional[Union[str, List[str]]] = None
     follow_up_questions: Optional[List[str]] = None
     error: Optional[str] = None
 
@@ -147,13 +147,21 @@ async def process_query(request: QueryRequest):
             "error": query_result.get("error", "Failed to execute SQL query")
         }
     
+    # Get insights and ensure proper formatting
+    insights = sql_result.get("insights", "Here are the results of your query.")
+    
+    # If insights is already a string, use it as is
+    # If it's a list, join it into a string
+    if isinstance(insights, list):
+        insights = "\n".join([f"- {insight}" for insight in insights])
+    
     # Return the results with explanation, insights, and follow-up questions
     return {
         "success": True,
         "sql": sql_query,
         "data": query_result.get("data", []),
         "explanation": sql_result.get("explanation", "Query executed successfully."),
-        "insights": sql_result.get("insights", "Here are the results of your query."),
+        "insights": insights,
         "follow_up_questions": sql_result.get("follow_up_questions", [])
     }
 
