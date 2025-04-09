@@ -40,6 +40,9 @@ class QueryResponse(BaseModel):
     success: bool
     sql: Optional[str] = None
     data: Optional[List[Dict[str, Any]]] = None
+    explanation: Optional[str] = None
+    insights: Optional[str] = None
+    follow_up_questions: Optional[List[str]] = None
     error: Optional[str] = None
 
 class SchemaRequest(BaseModel):
@@ -144,11 +147,14 @@ async def process_query(request: QueryRequest):
             "error": query_result.get("error", "Failed to execute SQL query")
         }
     
-    # Return the results
+    # Return the results with explanation, insights, and follow-up questions
     return {
         "success": True,
         "sql": sql_query,
-        "data": query_result.get("data", [])
+        "data": query_result.get("data", []),
+        "explanation": sql_result.get("explanation", "Query executed successfully."),
+        "insights": sql_result.get("insights", "Here are the results of your query."),
+        "follow_up_questions": sql_result.get("follow_up_questions", [])
     }
 
 @app.get("/connections", response_model=DatabaseConnectionList)
