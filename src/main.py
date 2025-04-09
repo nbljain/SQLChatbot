@@ -1,3 +1,14 @@
+"""
+SQL Chatbot - Main Implementation Module
+
+This module provides the core functionality to run the SQL Chatbot application.
+It includes functions to:
+1. Run the FastAPI backend server
+2. Run the Streamlit frontend interface
+3. Set up the database with sample data
+
+These functions can be imported and used by other modules, or this module can be run directly.
+"""
 import sys
 import os
 import multiprocessing
@@ -35,23 +46,32 @@ def run_frontend():
 def setup_database():
     """Setup the SQLite database with sample data"""
     try:
-        from src.db.setup_database import setup_database
-        setup_database()
+        from src.db.setup_database import setup_database as setup_db_impl
+        setup_db_impl()
+        return True
     except Exception as e:
         print(f"Error setting up database: {e}")
-        sys.exit(1)
+        return False
 
-if __name__ == "__main__":
-    # Check if we should setup the database first
-    if len(sys.argv) > 1 and sys.argv[1] == "setup":
-        print("Setting up database...")
-        setup_database()
-        print("Database setup complete!")
-        sys.exit(0)
-    
+def run_application():
+    """Run the complete application (both backend and frontend)"""
     # Start backend in a separate process
     backend_process = multiprocessing.Process(target=run_backend)
     backend_process.start()
     
     # Run frontend in main process
     run_frontend()
+    
+if __name__ == "__main__":
+    # Check if we should setup the database first
+    if len(sys.argv) > 1 and sys.argv[1] == "setup":
+        print("Setting up database...")
+        if setup_database():
+            print("Database setup complete!")
+            sys.exit(0)
+        else:
+            print("Database setup failed!")
+            sys.exit(1)
+    
+    # Run the full application
+    run_application()

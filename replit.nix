@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.sqlite
     pkgs.rustc
     pkgs.pkg-config
     pkgs.openssl
