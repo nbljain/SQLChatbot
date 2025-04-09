@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from pydantic import BaseModel
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union, Literal
 import uvicorn
 import os
 import tempfile
@@ -19,6 +19,16 @@ from src.db.database import (
 )
 from src.utils.langchain_sql import generate_sql_query
 from src.utils.csv_import import preview_csv, import_csv_to_table
+from src.db.csv_data import (
+    get_all_tables, 
+    get_table_data, 
+    get_table_relationships,
+    import_table_to_db, 
+    import_related_tables, 
+    create_table_schema,
+    get_column_types, 
+    create_all_sample_tables
+)
 
 app = FastAPI()
 
@@ -306,6 +316,157 @@ async def import_csv_file(
         }
     finally:
         file.file.close()
+
+# === Sample CSV Data Endpoints ===
+
+class SampleTableListResponse(BaseModel):
+    tables: List[str]
+
+class SampleTablePreviewResponse(BaseModel):
+    success: bool
+    preview_data: Optional[List[Dict[str, Any]]] = None
+    schema: Optional[str] = None
+    relationships: Optional[Dict[str, Dict[str, str]]] = None
+    error: Optional[str] = None
+
+class SampleTableImportRequest(BaseModel):
+    table_name: str
+    if_exists: Literal["replace", "append", "fail"] = "replace"
+    import_related: bool = False
+
+class SampleTableImportResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    row_count: Optional[int] = None
+    column_count: Optional[int] = None
+    tables: Optional[List[str]] = None
+    details: Optional[Dict[str, Dict[str, Any]]] = None
+    error: Optional[str] = None
+
+@app.get("/csv/sample-tables", response_model=SampleTableListResponse)
+async def get_sample_tables():
+    """Get a list of available sample tables"""
+    tables = get_all_tables()
+    return {"tables": tables}
+
+@app.get("/csv/sample-preview/{table_name}", response_model=SampleTablePreviewResponse)
+async def preview_sample_table(table_name: str):
+    """Preview a sample table's data and schema"""
+    try:
+        if table_name not in get_all_tables():
+            return {
+                "success": False,
+                "error": f"Table '{table_name}' not found in sample data"
+            }
+        
+        # Get sample data
+        data = get_table_data(table_name)
+        
+        # Get table relationships
+        relationships = get_table_relationships(table_name)
+        
+        # Get table schema
+        schema = create_table_schema(table_name)
+        
+        return {
+            "success": True,
+            "preview_data": data[:10],  # Return first 10 rows
+            "schema": schema,
+            "relationships": relationships
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error previewing sample table: {str(e)}"
+        }
+
+@app.post("/csv/sample-import", response_model=SampleTableImportResponse)
+async def import_sample_table(request: SampleTableImportRequest):
+    """Import a sample table into the database"""
+    try:
+        # Validate table name
+        if request.table_name not in get_all_tables():
+            return {
+                "success": False,
+                "error": f"Table '{request.table_name}' not found in sample data"
+            }
+        
+        # Import the table
+        result = import_table_to_db(request.table_name, if_exists=request.if_exists)
+        
+        if not result.get("success", False):
+            return {
+                "success": False,
+                "error": result.get("error", f"Failed to import table '{request.table_name}'")
+            }
+        
+        return {
+            "success": True,
+            "message": result.get("message", "Sample table imported successfully"),
+            "row_count": result.get("row_count", 0),
+            "column_count": result.get("column_count", 0)
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error importing sample table: {str(e)}"
+        }
+
+@app.post("/csv/sample-import-related", response_model=SampleTableImportResponse)
+async def import_sample_related_tables(request: SampleTableImportRequest):
+    """Import a sample table and all related tables into the database"""
+    try:
+        # Validate table name
+        if request.table_name not in get_all_tables():
+            return {
+                "success": False,
+                "error": f"Table '{request.table_name}' not found in sample data"
+            }
+        
+        # Import the table and related tables
+        result = import_related_tables(request.table_name, if_exists=request.if_exists)
+        
+        if not result.get("success", False):
+            return {
+                "success": False,
+                "error": result.get("error", f"Failed to import related tables for '{request.table_name}'")
+            }
+        
+        return {
+            "success": True,
+            "message": result.get("message", "Sample tables imported successfully"),
+            "tables": result.get("tables", []),
+            "details": result.get("details", {})
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error importing related sample tables: {str(e)}"
+        }
+
+@app.post("/csv/create-all-sample-tables", response_model=SampleTableImportResponse)
+async def create_all_samples():
+    """Create all sample tables with proper relationships"""
+    try:
+        result = create_all_sample_tables()
+        
+        if not result.get("success", False):
+            return {
+                "success": False,
+                "error": result.get("error", "Failed to create all sample tables")
+            }
+        
+        return {
+            "success": True,
+            "message": result.get("message", "All sample tables created successfully"),
+            "tables": result.get("tables", []),
+            "details": result.get("details", {})
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error creating sample tables: {str(e)}"
+        }
 
 def start_backend():
     """Start the FastAPI backend server"""
