@@ -1,8 +1,6 @@
 import os
-from langchain.chains import create_sql_query_chain
 from langchain_openai import ChatOpenAI
-from langchain.prompts.chat import ChatPromptTemplate
-from src.db.database import get_all_table_schemas
+from src.db.database import get_all_table_schemas, execute_sql_query
 
 def get_llm():
     """Initialize and return the language model"""
@@ -28,42 +26,49 @@ def get_table_schema_string():
     
     return schema_str
 
-def setup_sql_chain():
-    """Set up the LangChain chain for SQL generation"""
-    llm = get_llm()
-    
-    # Add custom instructions to improve SQL generation
-    custom_prompt = """
-    You are a SQL expert. Given the user question, create only a SQL query that will answer the user's question.
-    
-    {schema}
-    
-    Consider using aliases to make complex queries more readable. 
-    Use appropriate JOIN types and optimize the query for readability.
-    Use proper filtering with WHERE clauses.
-    Provide appropriate sorting with ORDER BY when needed.
-    
-    User Question: {question}
-    
-    SQL Query:
-    """
-    
-    prompt = ChatPromptTemplate.from_template(custom_prompt)
-    
-    chain = create_sql_query_chain(llm, prompt)
-    return chain
-
 def generate_sql_query(user_question):
     """Generate SQL from natural language question"""
     try:
         # Get database schema
         schema = get_table_schema_string()
         
-        # Set up chain
-        chain = setup_sql_chain()
+        # Set up the LLM
+        llm = get_llm()
         
-        # Generate SQL
-        sql_query = chain.invoke({"schema": schema, "question": user_question})
+        # Create a direct prompt for SQL generation
+        prompt = f"""
+        You are a SQL expert. Given the user question, create only a SQL query that will answer the user's question.
+        
+        {schema}
+        
+        Consider using aliases to make complex queries more readable. 
+        Use appropriate JOIN types and optimize the query for readability.
+        Use proper filtering with WHERE clauses.
+        Provide appropriate sorting with ORDER BY when needed.
+        
+        User Question: {user_question}
+        
+        Return ONLY the SQL query without any additional text or explanations.
+        
+        SQL Query:
+        """
+        
+        # Generate SQL directly with the model
+        response = llm.invoke(prompt)
+        
+        # Extract the SQL query from the response and clean up any markdown formatting
+        sql_query = response.content.strip()
+        
+        # Remove markdown code block formatting if present
+        if sql_query.startswith("```sql"):
+            sql_query = sql_query[7:]  # Remove ```sql
+        if sql_query.startswith("```"):
+            sql_query = sql_query[3:]  # Remove ```
+        if sql_query.endswith("```"):
+            sql_query = sql_query[:-3]  # Remove trailing ```
+            
+        # Clean and normalize the SQL
+        sql_query = sql_query.strip()
         
         return {"success": True, "sql": sql_query}
     except Exception as e:
