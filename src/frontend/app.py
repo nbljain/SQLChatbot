@@ -3,6 +3,7 @@ import pandas as pd
 import traceback
 import json
 import requests
+import re
 from typing import Dict, List, Any, Optional
 
 # === Configuration ===
@@ -620,38 +621,48 @@ for i, chat in enumerate(st.session_state.chat_history):
             with st.chat_message("assistant"):
                 st.markdown("**SQL Chatbot**:")
                 
-                # Display the explanation (if available)
+                # Display main explanation prominently
                 if "explanation" in chat and chat["explanation"]:
-                    st.markdown(f"**Explanation**: {chat['explanation']}")
+                    st.markdown(f"### {chat['explanation']}")
                 
-                # Show SQL in expander
-                with st.expander("Generated SQL", expanded=False):
-                    st.code(chat["sql"], language="sql")
-                
+                # First show the data results
                 if "data" in chat and chat["data"]:
                     df = pd.DataFrame(chat["data"])
                     
-                    # Show data table with expander
-                    with st.expander("Data Results", expanded=True):
-                        st.dataframe(df, use_container_width=True, hide_index=True)
-                        st.caption(f"Found {len(chat['data'])} {'row' if len(chat['data']) == 1 else 'rows'}")
+                    # Show data table 
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                    st.caption(f"Found {len(chat['data'])} {'row' if len(chat['data']) == 1 else 'rows'}")
                     
-                    # Display insights (if available)
+                    # Display business insights prominently (if available)
                     if "insights" in chat and chat["insights"]:
-                        with st.expander("Data Insights", expanded=True):
-                            st.markdown(f"{chat['insights']}")
+                        st.markdown("---")
+                        st.markdown("### 📊 Business Insights")
+                        
+                        # Format insights with bullet points if they're not already formatted
+                        insights_text = chat["insights"]
+                        if not insights_text.strip().startswith("- ") and not insights_text.strip().startswith("* "):
+                            # Split insights by sentences or paragraphs and format as bullet points
+                            insights_list = [s.strip() for s in re.split(r'(?<=[.!?])\s+', insights_text) if s.strip()]
+                            insights_text = "\n".join([f"- {insight}" for insight in insights_list])
+                        
+                        st.markdown(insights_text)
+                        st.markdown("---")
                     
-                    # Display follow-up questions (if available)
+                    # Display follow-up questions as clickable buttons (if available)
                     if "follow_up_questions" in chat and chat["follow_up_questions"] and len(chat["follow_up_questions"]) > 0:
-                        with st.expander("Suggested Follow-up Questions", expanded=True):
-                            for q_idx, question in enumerate(chat["follow_up_questions"]):
-                                if st.button(f"📝 {question}", key=f"follow_up_{i}_{q_idx}"):
-                                    st.session_state.chat_history.append({
-                                        "role": "user", 
-                                        "content": question
-                                    })
-                                    # Rerun to process the follow-up question
-                                    st.rerun()
+                        st.markdown("### ❓ Want to know more?")
+                        for q_idx, question in enumerate(chat["follow_up_questions"]):
+                            if st.button(f"📝 {question}", key=f"follow_up_{i}_{q_idx}"):
+                                st.session_state.chat_history.append({
+                                    "role": "user", 
+                                    "content": question
+                                })
+                                # Rerun to process the follow-up question
+                                st.rerun()
+                    
+                    # Move SQL to a collapsible section at the bottom
+                    with st.expander("View SQL Query", expanded=False):
+                        st.code(chat["sql"], language="sql")
                     
                     # Add a "Show Visualizations" button for each chat response
                     viz_key = f"viz_btn_{i}"

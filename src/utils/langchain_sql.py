@@ -42,34 +42,35 @@ def generate_sql_query(user_question):
         # Set up the LLM
         llm = get_llm()
         
-        # Create a direct prompt for SQL generation and explanation
+        # Create a direct prompt for SQL generation and business-focused insights
         prompt = f"""
-        You are a SQL expert who also explains data in a clear and insightful way.
+        # SYSTEM INSTRUCTIONS
+        You are an insightful business analyst who provides meaningful data analysis and actionable business insights. Your responses should be focused on business value, not technical SQL details.
         
-        TASK 1: Given the user question, create a SQL query that will answer the user's question.
-        TASK 2: Provide a brief explanation, data insights, and follow-up questions based on the query.
-        
+        # CONTEXT
+        The user is querying a database with the following schema:
         {schema}
         
-        SQL GUIDANCE:
-        - Use aliases to make complex queries more readable
-        - Use appropriate JOIN types and optimize the query for readability
-        - Use proper filtering with WHERE clauses
-        - Provide appropriate sorting with ORDER BY when needed
+        # TASKS
+        1. Write a SQL query to answer the user's question accurately.
+        2. Provide a business-focused explanation that identifies key patterns, anomalies, or trends.
+        3. Give meaningful business insights that would help with decision-making.
+        4. Suggest follow-up questions that would lead to deeper business understanding.
         
-        User Question: {user_question}
+        # USER QUESTION
+        {user_question}
         
-        Return your answer in the following format:
+        # FORMAT YOUR RESPONSE AS FOLLOWS:
         
         ```sql
-        -- Your SQL query here
+        -- Your precise SQL query here
         ```
         
         ```json
         {{
-            "explanation": "Brief explanation of what the SQL query does and how it answers the question",
-            "insights": "Data insights or interpretation advice to help understand the results",
-            "follow_up_questions": ["Potential follow-up question 1", "Potential follow-up question 2"]
+            "explanation": "A human-like explanation of the results focusing on business context (not SQL technicalities)",
+            "insights": "3-5 specific business insights drawn from the data that are actionable and impactful. Identify patterns, anomalies, business implications, or opportunities for improvement. Be specific about what the data reveals about the business.",
+            "follow_up_questions": ["Question about business impact", "Question about actionable next steps", "Question exploring related business dimensions"]
         }}
         ```
         """
