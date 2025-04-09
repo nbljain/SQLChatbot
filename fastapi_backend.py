@@ -1,6 +1,10 @@
 """
-Compatibility module for existing workflow.
-This module imports and re-exports functionality from the src package.
+SQL Chatbot - FastAPI Backend (Compatibility Module)
+
+This file is a compatibility wrapper that imports from the new package structure 
+but maintains the original file path for backwards compatibility with existing workflows.
+
+The actual implementation has been moved to src/api/fastapi_backend.py
 """
 from src.api.fastapi_backend import app, start_backend
 
