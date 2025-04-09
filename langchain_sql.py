@@ -102,6 +102,24 @@ def generate_sql_query(user_question):
         result = chain.invoke({"schema": schema, "question": user_question})
         generated_sql = result["text"].strip()
         
+        # Clean up the SQL - remove markdown formatting if present
+        if generated_sql.startswith("```"):
+            # Remove markdown code block syntax
+            lines = generated_sql.split("\n")
+            # Remove the first line if it contains ```
+            if "```" in lines[0]:
+                lines = lines[1:]
+            # Remove the last line if it contains ```
+            if lines and "```" in lines[-1]:
+                lines = lines[:-1]
+            generated_sql = "\n".join(lines).strip()
+        
+        # Further cleanup: remove "sql" if it appears alone on the first line
+        lines = generated_sql.split("\n")
+        if lines and lines[0].strip().lower() in ["sql", "postgresql", "psql"]:
+            lines = lines[1:]
+            generated_sql = "\n".join(lines).strip()
+        
         # Check if it's a valid SQL query
         # If the LLM explained why it can't generate SQL, handle that case
         if (
