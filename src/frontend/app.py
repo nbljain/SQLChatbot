@@ -525,7 +525,10 @@ with csv_import_tab:
                                         chat_response = {
                                             "role": "assistant",
                                             "sql": result.get("sql", ""),
-                                            "data": result.get("data", [])
+                                            "data": result.get("data", []),
+                                            "explanation": result.get("explanation", ""),
+                                            "insights": result.get("insights", ""),
+                                            "follow_up_questions": result.get("follow_up_questions", [])
                                         }
                                     else:
                                         chat_response = {
@@ -616,6 +619,12 @@ for i, chat in enumerate(st.session_state.chat_history):
         if "sql" in chat:
             with st.chat_message("assistant"):
                 st.markdown("**SQL Chatbot**:")
+                
+                # Display the explanation (if available)
+                if "explanation" in chat and chat["explanation"]:
+                    st.markdown(f"**Explanation**: {chat['explanation']}")
+                
+                # Show SQL in expander
                 with st.expander("Generated SQL", expanded=False):
                     st.code(chat["sql"], language="sql")
                 
@@ -626,6 +635,23 @@ for i, chat in enumerate(st.session_state.chat_history):
                     with st.expander("Data Results", expanded=True):
                         st.dataframe(df, use_container_width=True, hide_index=True)
                         st.caption(f"Found {len(chat['data'])} {'row' if len(chat['data']) == 1 else 'rows'}")
+                    
+                    # Display insights (if available)
+                    if "insights" in chat and chat["insights"]:
+                        with st.expander("Data Insights", expanded=True):
+                            st.markdown(f"{chat['insights']}")
+                    
+                    # Display follow-up questions (if available)
+                    if "follow_up_questions" in chat and chat["follow_up_questions"] and len(chat["follow_up_questions"]) > 0:
+                        with st.expander("Suggested Follow-up Questions", expanded=True):
+                            for q_idx, question in enumerate(chat["follow_up_questions"]):
+                                if st.button(f"📝 {question}", key=f"follow_up_{i}_{q_idx}"):
+                                    st.session_state.chat_history.append({
+                                        "role": "user", 
+                                        "content": question
+                                    })
+                                    # Rerun to process the follow-up question
+                                    st.rerun()
                     
                     # Add a "Show Visualizations" button for each chat response
                     viz_key = f"viz_btn_{i}"
@@ -731,7 +757,10 @@ if st.button("Submit Question"):
                     chat_response = {
                         "role": "assistant",
                         "sql": result.get("sql", ""),
-                        "data": result.get("data", [])
+                        "data": result.get("data", []),
+                        "explanation": result.get("explanation", ""),
+                        "insights": result.get("insights", ""),
+                        "follow_up_questions": result.get("follow_up_questions", [])
                     }
                 else:
                     chat_response = {
