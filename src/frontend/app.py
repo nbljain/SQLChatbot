@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # === Helper Functions ===
-def query_backend(endpoint: str, data: Dict = None, method: str = "GET") -> Dict:
+def query_backend(endpoint: str, data: Dict = None, method: str = "GET", files: Dict = None) -> Dict:
     """Make a request to the backend API"""
     url = f"{API_URL}/{endpoint}"
     
@@ -25,7 +25,11 @@ def query_backend(endpoint: str, data: Dict = None, method: str = "GET") -> Dict
         if method == "GET":
             response = requests.get(url, timeout=30)
         elif method == "POST":
-            response = requests.post(url, json=data, timeout=30)
+            if files:
+                # For file uploads, use multipart/form-data instead of JSON
+                response = requests.post(url, data=data, files=files, timeout=90)  # Longer timeout for file uploads
+            else:
+                response = requests.post(url, json=data, timeout=30)
         elif method == "DELETE":
             response = requests.delete(url, timeout=30)
         else:
@@ -352,30 +356,178 @@ st.write("Ask questions about your database in natural language.")
 # Database schema section
 st.header("Database Information")
 
-# Fetch and display table list
-if st.button("Refresh Database Schema"):
-    with st.spinner("Fetching database schema..."):
-        tables_response = query_backend("tables")
-        
-        if tables_response.get("tables"):
-            st.session_state.tables = tables_response.get("tables", [])
-            st.success(f"Found {len(st.session_state.tables)} tables in the database")
-        else:
-            st.error("Could not fetch database tables")
+# Create tabs for database schema and CSV import
+schema_tab, csv_import_tab = st.tabs(["Database Schema", "Import CSV"])
 
-# Display tables if available
-if "tables" in st.session_state and st.session_state.tables:
-    with st.expander("Database Schema", expanded=False):
-        for table in st.session_state.tables:
-            with st.expander(table):
-                # Fetch schema for this table when the expander is clicked
-                schema_resp = query_backend("schema", {"table_name": table}, method="POST")
-                if schema_resp.get("schema", {}).get(table):
-                    schema_data = schema_resp["schema"][table]
-                    for col, type_info in schema_data.items():
-                        st.text(f"• {col} ({type_info})")
+with schema_tab:
+    # Fetch and display table list
+    if st.button("Refresh Database Schema"):
+        with st.spinner("Fetching database schema..."):
+            tables_response = query_backend("tables")
+            
+            if tables_response.get("tables"):
+                st.session_state.tables = tables_response.get("tables", [])
+                st.success(f"Found {len(st.session_state.tables)} tables in the database")
+            else:
+                st.error("Could not fetch database tables")
+    
+    # Display tables if available
+    if "tables" in st.session_state and st.session_state.tables:
+        with st.expander("Database Schema", expanded=False):
+            for table in st.session_state.tables:
+                with st.expander(table):
+                    # Fetch schema for this table when the expander is clicked
+                    schema_resp = query_backend("schema", {"table_name": table}, method="POST")
+                    if schema_resp.get("schema", {}).get(table):
+                        schema_data = schema_resp["schema"][table]
+                        for col, type_info in schema_data.items():
+                            st.text(f"• {col} ({type_info})")
+                    else:
+                        st.text("Could not fetch schema")
+
+with csv_import_tab:
+    st.write("Import CSV file into the database")
+    
+    uploaded_file = st.file_uploader(
+        "Upload CSV File", 
+        type=["csv"], 
+        help="Select a CSV file to import into the database"
+    )
+    
+    if uploaded_file is not None:
+        # CSV import options
+        table_name = st.text_input(
+            "Table Name",
+            help="Name for the new table (use lowercase with underscores, no spaces)"
+        )
+        
+        has_header = st.checkbox("File has header row", value=True)
+        
+        delimiter = st.selectbox(
+            "Column Delimiter",
+            options=[",", ";", "\\t", "|", " "],
+            index=0,
+            format_func=lambda x: {",": "Comma (,)", ";": "Semicolon (;)", "\\t": "Tab", "|": "Pipe (|)", " ": "Space"}.get(x, x)
+        )
+        
+        if_exists = st.radio(
+            "If table exists:",
+            options=["replace", "append", "fail"],
+            index=0,
+            horizontal=True,
+            help={"replace": "Replace existing table", "append": "Append to existing table", "fail": "Fail if table exists"}
+        )
+        
+        # Preview button
+        preview_col, import_col = st.columns(2)
+        with preview_col:
+            if st.button("Preview Data"):
+                if not uploaded_file:
+                    st.error("Please upload a CSV file")
                 else:
-                    st.text("Could not fetch schema")
+                    with st.spinner("Generating preview..."):
+                        try:
+                            # Create form data
+                            preview_data = {
+                                "preview_rows": 5,
+                                "has_header": has_header,
+                                "delimiter": delimiter
+                            }
+                            
+                            # Use the file uploader object directly as a file
+                            files = {"file": uploaded_file}
+                            
+                            # Call the preview endpoint
+                            preview_response = query_backend(
+                                "csv/preview", 
+                                data=preview_data, 
+                                method="POST",
+                                files=files
+                            )
+                            
+                            if preview_response.get("success", False):
+                                st.subheader("Preview")
+                                preview_df = pd.DataFrame(preview_response.get("preview_data", []))
+                                st.dataframe(preview_df, use_container_width=True)
+                                
+                                st.caption(f"Showing {preview_response.get('preview_rows', 0)} of {preview_response.get('total_rows', 0)} rows")
+                                
+                                # Show detected column types
+                                with st.expander("Detected Column Types"):
+                                    for col_name, col_type in preview_response.get("detected_types", {}).items():
+                                        st.text(f"{col_name}: {col_type}")
+                            else:
+                                st.error(preview_response.get("error", "Failed to preview CSV file"))
+                        except Exception as e:
+                            st.error(f"Error previewing CSV: {str(e)}")
+                            st.sidebar.error(f"Exception details: {traceback.format_exc()}")
+        
+        with import_col:
+            if st.button("Import Data"):
+                if not uploaded_file:
+                    st.error("Please upload a CSV file")
+                elif not table_name:
+                    st.error("Please provide a table name")
+                else:
+                    with st.spinner("Importing data..."):
+                        try:
+                            # Create form data
+                            import_data = {
+                                "table_name": table_name,
+                                "if_exists": if_exists,
+                                "has_header": has_header,
+                                "delimiter": delimiter
+                            }
+                            
+                            # Use the file uploader object directly as a file
+                            files = {"file": uploaded_file}
+                            
+                            # Call the import endpoint
+                            import_response = query_backend(
+                                "csv/import", 
+                                data=import_data, 
+                                method="POST",
+                                files=files
+                            )
+                            
+                            if import_response.get("success", False):
+                                st.success(import_response.get("message", "CSV imported successfully"))
+                                
+                                # Show import details
+                                st.info(f"Imported {import_response.get('row_count', 0)} rows and {import_response.get('column_count', 0)} columns into table '{table_name}'")
+                                
+                                # Show button to view the imported data
+                                if st.button("Query Imported Data"):
+                                    st.session_state.chat_history.append({
+                                        "role": "user", 
+                                        "content": f"Show me all data from {table_name}"
+                                    })
+                                    
+                                    # Generate SQL and query the data
+                                    with st.spinner("Fetching imported data..."):
+                                        question = f"Show me all data from {table_name}"
+                                        result = query_backend("query", {"question": question}, method="POST")
+                                        
+                                        if result.get("success", False):
+                                            chat_response = {
+                                                "role": "assistant",
+                                                "sql": result.get("sql", ""),
+                                                "data": result.get("data", [])
+                                            }
+                                        else:
+                                            chat_response = {
+                                                "role": "assistant",
+                                                "content": "I couldn't fetch the imported data.",
+                                                "error": result.get("error", "Unknown error")
+                                            }
+                                        
+                                        st.session_state.chat_history.append(chat_response)
+                                        st.rerun()
+                            else:
+                                st.error(import_response.get("error", "Failed to import CSV file"))
+                        except Exception as e:
+                            st.error(f"Error importing CSV: {str(e)}")
+                            st.sidebar.error(f"Exception details: {traceback.format_exc()}")
 
 # Display chat history
 st.header("Chat History")
