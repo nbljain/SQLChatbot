@@ -1,8 +1,12 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional, Union
 import uvicorn
-from database import get_table_names, get_table_schema, execute_sql_query
+from database import (
+    get_table_names, get_table_schema, execute_sql_query,
+    get_all_connections_info, get_active_connection_info,
+    connect_to_database, add_database_connection, remove_database_connection
+)
 from langchain_sql import generate_sql_query
 
 # Initialize FastAPI app
@@ -26,6 +30,33 @@ class TableListResponse(BaseModel):
 
 class SchemaResponse(BaseModel):
     schema: Dict[str, Any]
+
+class DatabaseConnectionInfo(BaseModel):
+    name: str
+    display_name: str
+    description: str = ""
+    type: str
+    is_active: Optional[bool] = False
+
+class DatabaseConnectionList(BaseModel):
+    connections: List[DatabaseConnectionInfo]
+
+class ActiveConnectionResponse(BaseModel):
+    connection: DatabaseConnectionInfo
+
+class DatabaseConnectionRequest(BaseModel):
+    name: str
+    display_name: str
+    description: str = ""
+    type: str
+    connection_string: str
+
+class ConnectionSwitchRequest(BaseModel):
+    name: str
+
+class MessageResponse(BaseModel):
+    success: bool
+    message: str
 
 # API endpoints
 @app.get("/")
@@ -84,6 +115,70 @@ async def process_query(request: QueryRequest):
         "success": True,
         "sql": sql_result["sql"],
         "data": query_result["data"]
+    }
+
+# Database connection management endpoints
+@app.get("/connections", response_model=DatabaseConnectionList)
+async def list_connections():
+    """List all available database connections"""
+    connections = get_all_connections_info()
+    return {"connections": connections}
+
+@app.get("/connections/active", response_model=ActiveConnectionResponse)
+async def get_active_connection():
+    """Get information about the active database connection"""
+    connection = get_active_connection_info()
+    # Create a new dict with is_active flag instead of modifying the original
+    connection_with_flag = {**connection, "is_active": True}
+    return {"connection": connection_with_flag}
+
+@app.post("/connections/switch", response_model=MessageResponse)
+async def switch_connection(request: ConnectionSwitchRequest):
+    """Switch to a different database connection"""
+    success = connect_to_database(request.name)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Database connection '{request.name}' not found or connection failed")
+    
+    return {
+        "success": True,
+        "message": f"Successfully switched to database connection: {request.name}"
+    }
+
+@app.post("/connections/add", response_model=MessageResponse)
+async def create_connection(request: DatabaseConnectionRequest):
+    """Add a new database connection"""
+    connection_config = {
+        "name": request.name,
+        "display_name": request.display_name,
+        "description": request.description,
+        "type": request.type,
+        "connection_string": request.connection_string
+    }
+    
+    success = add_database_connection(connection_config)
+    
+    if not success:
+        raise HTTPException(status_code=400, detail=f"Failed to add database connection '{request.name}'")
+    
+    return {
+        "success": True,
+        "message": f"Successfully added database connection: {request.name}"
+    }
+
+@app.delete("/connections/{name}", response_model=MessageResponse)
+async def delete_connection(name: str):
+    """Remove a database connection"""
+    if name == "default":
+        raise HTTPException(status_code=400, detail="Cannot remove the default database connection")
+    
+    success = remove_database_connection(name)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Database connection '{name}' not found or could not be removed")
+    
+    return {
+        "success": True,
+        "message": f"Successfully removed database connection: {name}"
     }
 
 # Run the API with Uvicorn when the script is executed directly

@@ -274,7 +274,159 @@ st.subheader("Ask questions about your database in natural language")
 
 # Sidebar with database info
 with st.sidebar:
-    st.header("Database Information")
+    st.header("Database Management")
+    
+    # Database connection management
+    st.subheader("Database Connections")
+    
+    # Get current active connection
+    if "active_connection" not in st.session_state:
+        with st.spinner("Fetching active connection..."):
+            try:
+                active_conn_resp = query_backend("connections/active")
+                if active_conn_resp and "connection" in active_conn_resp:
+                    st.session_state.active_connection = active_conn_resp["connection"]
+            except Exception as e:
+                st.error(f"Error fetching active connection: {str(e)}")
+                st.session_state.active_connection = {"name": "default", "display_name": "Default SQLite"}
+    
+    # Display active connection
+    if "active_connection" in st.session_state:
+        st.info(f"Active Connection: {st.session_state.active_connection.get('display_name', 'Unknown')}")
+    
+    # Option to switch connection
+    switch_tab, add_tab, manage_tab = st.tabs(["Switch", "Add New", "Manage"])
+    
+    with switch_tab:
+        # Get all available connections
+        if "connections" not in st.session_state or st.button("Refresh Connections", key="refresh_connections"):
+            with st.spinner("Fetching connections..."):
+                try:
+                    conn_resp = query_backend("connections")
+                    if conn_resp and "connections" in conn_resp:
+                        st.session_state.connections = conn_resp["connections"]
+                except Exception as e:
+                    st.error(f"Error fetching connections: {str(e)}")
+                    st.session_state.connections = []
+        
+        # Display connections for switching
+        if "connections" in st.session_state and st.session_state.connections:
+            connection_names = [f"{c['display_name']} ({c['type']})" for c in st.session_state.connections]
+            conn_map = {f"{c['display_name']} ({c['type']})": c["name"] for c in st.session_state.connections}
+            
+            selected_conn = st.selectbox(
+                "Select Connection", 
+                connection_names,
+                index=next((i for i, c in enumerate(st.session_state.connections) 
+                         if c.get("is_active", False)), 0)
+            )
+            
+            if st.button("Switch Connection"):
+                conn_name = conn_map.get(selected_conn)
+                if conn_name:
+                    with st.spinner(f"Switching to {selected_conn}..."):
+                        try:
+                            switch_resp = query_backend("connections/switch", {"name": conn_name}, method="POST")
+                            if switch_resp and switch_resp.get("success"):
+                                st.success(switch_resp.get("message", "Switched successfully"))
+                                # Update active connection
+                                active_conn_resp = query_backend("connections/active")
+                                if active_conn_resp and "connection" in active_conn_resp:
+                                    st.session_state.active_connection = active_conn_resp["connection"]
+                                # Clear cached schema
+                                if "tables" in st.session_state:
+                                    del st.session_state.tables
+                                st.rerun()
+                            else:
+                                st.error("Failed to switch connection")
+                        except Exception as e:
+                            st.error(f"Error switching connection: {str(e)}")
+    
+    with add_tab:
+        st.write("Add a new database connection")
+        new_conn_name = st.text_input("Connection Name (unique identifier)", key="new_conn_name")
+        new_conn_display = st.text_input("Display Name", key="new_conn_display")
+        new_conn_desc = st.text_area("Description", key="new_conn_desc")
+        new_conn_type = st.selectbox("Database Type", ["sqlite", "postgresql", "mysql", "oracle", "mssql"], key="new_conn_type")
+        
+        # Connection string help text
+        conn_string_help = {
+            "sqlite": "sqlite:///path/to/database.db",
+            "postgresql": "postgresql://user:password@host:port/dbname",
+            "mysql": "mysql://user:password@host:port/dbname",
+            "oracle": "oracle://user:password@host:port/dbname",
+            "mssql": "mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver"
+        }
+        
+        new_conn_string = st.text_input(
+            "Connection String", 
+            help=conn_string_help.get(new_conn_type, ""), 
+            key="new_conn_string"
+        )
+        
+        if st.button("Add Connection"):
+            if not new_conn_name or not new_conn_string:
+                st.error("Name and connection string are required")
+            else:
+                new_conn = {
+                    "name": new_conn_name,
+                    "display_name": new_conn_display or new_conn_name,
+                    "description": new_conn_desc,
+                    "type": new_conn_type,
+                    "connection_string": new_conn_string
+                }
+                
+                with st.spinner("Adding connection..."):
+                    try:
+                        add_resp = query_backend("connections/add", new_conn, method="POST")
+                        if add_resp and add_resp.get("success"):
+                            st.success(add_resp.get("message", "Connection added successfully"))
+                            # Clear the form
+                            st.session_state.new_conn_name = ""
+                            st.session_state.new_conn_display = ""
+                            st.session_state.new_conn_desc = ""
+                            st.session_state.new_conn_string = ""
+                            # Refresh connections list
+                            if "connections" in st.session_state:
+                                del st.session_state.connections
+                            st.rerun()
+                        else:
+                            st.error("Failed to add connection")
+                    except Exception as e:
+                        st.error(f"Error adding connection: {str(e)}")
+    
+    with manage_tab:
+        st.write("Manage Existing Connections")
+        if "connections" in st.session_state and st.session_state.connections:
+            conn_to_delete = st.selectbox(
+                "Select Connection to Remove", 
+                [c["display_name"] for c in st.session_state.connections if c["name"] != "default"]
+            )
+            
+            if conn_to_delete:
+                conn_name = next((c["name"] for c in st.session_state.connections 
+                                if c["display_name"] == conn_to_delete), None)
+                
+                if conn_name and st.button("Delete Connection", type="primary", use_container_width=True):
+                    with st.spinner(f"Deleting {conn_to_delete}..."):
+                        try:
+                            delete_resp = query_backend(f"connections/{conn_name}", method="DELETE")
+                            if delete_resp and delete_resp.get("success"):
+                                st.success(delete_resp.get("message", "Connection deleted successfully"))
+                                # Refresh connections list
+                                if "connections" in st.session_state:
+                                    del st.session_state.connections
+                                st.rerun()
+                            else:
+                                st.error("Failed to delete connection")
+                        except Exception as e:
+                            st.error(f"Error deleting connection: {str(e)}")
+        else:
+            st.info("No connections available to delete")
+    
+    # Database schema section
+    st.divider()
+    st.subheader("Database Schema")
     
     # Fetch and display table list
     if st.button("Refresh Database Schema"):
@@ -289,7 +441,6 @@ with st.sidebar:
     
     # Display tables if available
     if hasattr(st.session_state, "tables") and st.session_state.tables:
-        st.subheader("Database Tables")
         for table in st.session_state.tables:
             with st.expander(table):
                 # Fetch schema for this table when the expander is clicked
