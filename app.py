@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
+import traceback
 from typing import Dict, List, Any
 
 # Set page configuration
