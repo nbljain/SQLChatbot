@@ -361,7 +361,8 @@ with st.sidebar:
         new_conn_string = st.text_input(
             "Connection String", 
             help=conn_string_help.get(new_conn_type, ""), 
-            key="new_conn_string"
+            key="new_conn_string",
+            type="password"  # Hide the connection string for security
         )
         
         if st.button("Add Connection"):
