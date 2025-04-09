@@ -58,13 +58,14 @@ def setup_sql_chain():
     
 {schema}
 
-Your task is to generate a valid PostgreSQL SQL query based on the user's question.
+Your task is to generate a valid SQLite SQL query based on the user's question.
 - Only generate a valid SQL query, don't include any explanations or commentary
 - Don't use any tables or columns not listed in the schema
 - If you can't create a valid query from the input, explain why instead of attempting to generate SQL
 - Ensure your queries are efficient and properly formatted
 - Use appropriate joins, aggregations, or filters as needed
 - The generated SQL should be directly executable without modification
+- Make sure to follow SQLite syntax (not PostgreSQL)
 """
     
     # Create the chat prompt template

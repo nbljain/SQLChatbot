@@ -2,24 +2,12 @@ import os
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
-# Get database credentials from environment variables
-DB_HOST = os.environ.get("PGHOST")
-DB_PORT = os.environ.get("PGPORT")
-DB_NAME = os.environ.get("PGDATABASE")
-DB_USER = os.environ.get("PGUSER")
-DB_PASSWORD = os.environ.get("PGPASSWORD")
-DATABASE_URL = os.environ.get("DATABASE_URL")
-
-# Create database connection
-if DATABASE_URL:
-    # Use DATABASE_URL if provided
-    db_url = DATABASE_URL
-else:
-    # Construct connection string from individual credentials
-    db_url = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# Create a SQLite database
+db_url = "sqlite:///sql_chatbot.db"
 
 try:
     engine = create_engine(db_url)
+    print(f"Successfully connected to SQLite database at sql_chatbot.db")
 except Exception as e:
     print(f"Error creating database engine: {e}")
     raise
