@@ -25,6 +25,8 @@ def query_backend(endpoint: str, data: Dict = None, method: str = "GET") -> Dict
         if method == "GET":
             response = requests.get(f"{BACKEND_URL}/{endpoint}", timeout=10)
         else:  # POST
+            if data is None:
+                data = {}  # Ensure data is at least an empty dict for POST requests
             response = requests.post(f"{BACKEND_URL}/{endpoint}", json=data, timeout=10)
         
         # Log the response status
@@ -32,9 +34,10 @@ def query_backend(endpoint: str, data: Dict = None, method: str = "GET") -> Dict
         
         response.raise_for_status()  # Raise exception for HTTP errors
         return response.json()
-    except requests.RequestException as e:
+    except Exception as e:
         st.error(f"Error connecting to backend: {str(e)}")
         st.sidebar.error(f"Backend error details: {type(e).__name__}: {str(e)}")
+        st.sidebar.error(f"Traceback: {traceback.format_exc()}")
         return {"success": False, "error": str(e)}
 
 # Function to display query results
@@ -141,24 +144,39 @@ if st.button("Submit Question"):
         
         # Show loading spinner
         with st.spinner("Generating SQL and fetching results..."):
-            # Query the backend
-            result = query_backend("query", {"question": user_input}, method="POST")
-            
-            # Add response to chat history
-            if result.get("success", False):
+            try:
+                # Query the backend
+                result = query_backend("query", {"question": user_input}, method="POST")
+                
+                # Log raw response for debugging
+                st.sidebar.write("Raw API Response:", result)
+                
+                # Add response to chat history
+                if result.get("success", False):
+                    chat_response = {
+                        "role": "assistant",
+                        "sql": result.get("sql", ""),
+                        "data": result.get("data", [])
+                    }
+                else:
+                    chat_response = {
+                        "role": "assistant",
+                        "content": "I couldn't process your query.",
+                        "error": result.get("error", "Unknown error")
+                    }
+                
+                st.session_state.chat_history.append(chat_response)
+            except Exception as e:
+                st.error(f"Error processing query: {str(e)}")
+                st.sidebar.error(f"Exception details: {traceback.format_exc()}")
+                
+                # Add error to chat history
                 chat_response = {
                     "role": "assistant",
-                    "sql": result.get("sql", ""),
-                    "data": result.get("data", [])
+                    "content": "I encountered an error while processing your query.",
+                    "error": str(e)
                 }
-            else:
-                chat_response = {
-                    "role": "assistant",
-                    "content": "I couldn't process your query.",
-                    "error": result.get("error", "Unknown error")
-                }
-            
-            st.session_state.chat_history.append(chat_response)
+                st.session_state.chat_history.append(chat_response)
         
         # Rerun to update the UI with new chat history
         st.rerun()
