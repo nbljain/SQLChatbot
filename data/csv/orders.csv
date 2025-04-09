@@ -1,0 +1,8 @@
+id,customer_id,order_date,total_amount,status
+1,1,2023-02-01,1200.00,Delivered
+2,2,2023-03-05,950.00,Delivered
+3,3,2023-04-10,300.00,Shipped
+4,1,2023-05-15,650.00,Processing
+5,4,2023-06-01,1100.00,Delivered
+6,5,2023-06-15,800.00,Shipped
+7,2,2023-07-01,400.00,Processing
