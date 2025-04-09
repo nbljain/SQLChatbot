@@ -11,22 +11,29 @@ st.set_page_config(
     layout="wide"
 )
 
-# Backend API URL
-BACKEND_URL = "http://localhost:8000"
+# Backend API URL - using 127.0.0.1 instead of localhost to avoid DNS issues
+BACKEND_URL = "http://127.0.0.1:8000"
 
 # Function to fetch data from the backend API
 def query_backend(endpoint: str, data: Dict = None, method: str = "GET") -> Dict:
     """Make a request to the backend API"""
     try:
+        # Add debugging information
+        st.sidebar.info(f"Connecting to: {BACKEND_URL}/{endpoint}")
+        
         if method == "GET":
-            response = requests.get(f"{BACKEND_URL}/{endpoint}")
+            response = requests.get(f"{BACKEND_URL}/{endpoint}", timeout=10)
         else:  # POST
-            response = requests.post(f"{BACKEND_URL}/{endpoint}", json=data)
+            response = requests.post(f"{BACKEND_URL}/{endpoint}", json=data, timeout=10)
+        
+        # Log the response status
+        st.sidebar.success(f"Response status: {response.status_code}")
         
         response.raise_for_status()  # Raise exception for HTTP errors
         return response.json()
     except requests.RequestException as e:
         st.error(f"Error connecting to backend: {str(e)}")
+        st.sidebar.error(f"Backend error details: {type(e).__name__}: {str(e)}")
         return {"success": False, "error": str(e)}
 
 # Function to display query results
