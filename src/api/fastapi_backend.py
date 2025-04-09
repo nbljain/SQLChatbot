@@ -1,7 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 import uvicorn
+import os
+import tempfile
+import shutil
 
 from src.db.database import (
     get_table_names, 
@@ -15,6 +18,7 @@ from src.db.database import (
     remove_database_connection
 )
 from src.utils.langchain_sql import generate_sql_query
+from src.utils.csv_import import preview_csv, import_csv_to_table
 
 app = FastAPI()
 
@@ -64,6 +68,23 @@ class ConnectionSwitchRequest(BaseModel):
 class MessageResponse(BaseModel):
     success: bool
     message: str
+
+class CSVPreviewResponse(BaseModel):
+    success: bool
+    preview_data: Optional[List[Dict[str, Any]]] = None
+    columns: Optional[List[str]] = None
+    total_rows: Optional[int] = None
+    preview_rows: Optional[int] = None
+    detected_types: Optional[Dict[str, str]] = None
+    error: Optional[str] = None
+
+class CSVImportResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    row_count: Optional[int] = None
+    column_count: Optional[int] = None
+    column_types: Optional[Dict[str, str]] = None
+    error: Optional[str] = None
 
 # === API Endpoints ===
 
@@ -167,6 +188,124 @@ async def delete_connection(name: str):
         return {"success": True, "message": f"Successfully removed database connection '{name}'"}
     else:
         return {"success": False, "message": f"Failed to remove database connection '{name}'"}
+
+@app.post("/csv/preview", response_model=CSVPreviewResponse)
+async def preview_csv_file(
+    file: UploadFile = File(...),
+    preview_rows: int = Form(5),
+    has_header: bool = Form(True),
+    delimiter: str = Form(",")
+):
+    """
+    Preview CSV file contents before importing
+    
+    Args:
+        file: The CSV file to preview
+        preview_rows: Number of rows to preview
+        has_header: Whether the CSV has a header row
+        delimiter: CSV delimiter character
+    """
+    try:
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            # Copy uploaded file to temp file
+            shutil.copyfileobj(file.file, temp_file)
+            temp_path = temp_file.name
+        
+        # Get file preview
+        preview_result = preview_csv(temp_path, rows=preview_rows, has_header=has_header, delimiter=delimiter)
+        
+        # Clean up temp file
+        os.unlink(temp_path)
+        
+        # Return preview results
+        if preview_result.get("success", False):
+            return {
+                "success": True,
+                "preview_data": preview_result.get("preview_data", []),
+                "columns": preview_result.get("columns", []),
+                "total_rows": preview_result.get("total_rows", 0),
+                "preview_rows": preview_result.get("preview_rows", 0),
+                "detected_types": preview_result.get("detected_types", {}),
+            }
+        else:
+            return {
+                "success": False,
+                "error": preview_result.get("error", "Unknown error previewing CSV file")
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error processing CSV file: {str(e)}"
+        }
+    finally:
+        file.file.close()
+
+@app.post("/csv/import", response_model=CSVImportResponse)
+async def import_csv_file(
+    file: UploadFile = File(...),
+    table_name: str = Form(...),
+    if_exists: str = Form("replace"),
+    has_header: bool = Form(True),
+    delimiter: str = Form(",")
+):
+    """
+    Import CSV file into database table
+    
+    Args:
+        file: The CSV file to import
+        table_name: Name of the table to create or update
+        if_exists: Action if table exists ('fail', 'replace', or 'append')
+        has_header: Whether the CSV has a header row
+        delimiter: CSV delimiter character
+    """
+    try:
+        # Validate if_exists parameter
+        if if_exists not in ["fail", "replace", "append"]:
+            return {
+                "success": False,
+                "error": "Invalid if_exists value. Must be 'fail', 'replace', or 'append'."
+            }
+            
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            # Copy uploaded file to temp file
+            shutil.copyfileobj(file.file, temp_file)
+            temp_path = temp_file.name
+        
+        # Import CSV to database
+        import_result = import_csv_to_table(
+            temp_path, 
+            table_name=table_name,
+            if_exists=if_exists,
+            has_header=has_header,
+            delimiter=delimiter
+        )
+        
+        # Clean up temp file
+        os.unlink(temp_path)
+        
+        # Return import results
+        if import_result.get("success", False):
+            return {
+                "success": True,
+                "message": import_result.get("message", "CSV imported successfully"),
+                "row_count": import_result.get("row_count", 0),
+                "column_count": import_result.get("column_count", 0),
+                "column_types": import_result.get("column_types", {})
+            }
+        else:
+            return {
+                "success": False,
+                "error": import_result.get("error", "Unknown error importing CSV file")
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error importing CSV file: {str(e)}"
+        }
+    finally:
+        file.file.close()
 
 def start_backend():
     """Start the FastAPI backend server"""
