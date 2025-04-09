@@ -19,15 +19,14 @@ from src.db.database import (
 )
 from src.utils.langchain_sql import generate_sql_query
 from src.utils.csv_import import preview_csv, import_csv_to_table
-from src.db.csv_data import (
-    get_all_tables, 
-    get_table_data, 
-    get_table_relationships,
-    import_table_to_db, 
-    import_related_tables, 
-    create_table_schema,
-    get_column_types, 
-    create_all_sample_tables
+from src.utils.csv_file_loader import (
+    get_available_csv_files,
+    get_csv_preview,
+    import_csv_to_db,
+    import_related_tables,
+    import_all_available_tables,
+    get_table_schema as get_csv_table_schema,
+    get_table_relationships as get_csv_table_relationships
 )
 
 app = FastAPI()
@@ -346,81 +345,91 @@ class SampleTableImportResponse(BaseModel):
 @app.get("/csv/sample-tables", response_model=SampleTableListResponse)
 async def get_sample_tables():
     """Get a list of available sample tables"""
-    tables = get_all_tables()
+    tables = get_available_csv_files()
     return {"tables": tables}
 
 @app.get("/csv/sample-preview/{table_name}", response_model=SampleTablePreviewResponse)
 async def preview_sample_table(table_name: str):
     """Preview a sample table's data and schema"""
     try:
-        if table_name not in get_all_tables():
+        # Check if CSV file exists
+        available_tables = get_available_csv_files()
+        if table_name not in available_tables:
             return {
                 "success": False,
-                "error": f"Table '{table_name}' not found in sample data"
+                "error": f"CSV file for '{table_name}' not found in data/csv directory"
             }
         
-        # Get sample data
-        data = get_table_data(table_name)
+        # Get CSV preview
+        preview = get_csv_preview(table_name, rows=10)
         
-        # Get table relationships
-        relationships = get_table_relationships(table_name)
+        if not preview.get("success", False):
+            return {
+                "success": False,
+                "error": preview.get("error", f"Failed to preview data for '{table_name}'")
+            }
         
         # Get table schema
-        schema = create_table_schema(table_name)
+        schema = get_csv_table_schema(table_name)
+        
+        # Get table relationships
+        relationships = get_csv_table_relationships(table_name)
         
         return {
             "success": True,
-            "preview_data": data[:10],  # Return first 10 rows
+            "preview_data": preview.get("preview_data", []),
             "schema": schema,
             "relationships": relationships
         }
     except Exception as e:
         return {
             "success": False,
-            "error": f"Error previewing sample table: {str(e)}"
+            "error": f"Error previewing data: {str(e)}"
         }
 
 @app.post("/csv/sample-import", response_model=SampleTableImportResponse)
 async def import_sample_table(request: SampleTableImportRequest):
-    """Import a sample table into the database"""
+    """Import a CSV file into the database"""
     try:
-        # Validate table name
-        if request.table_name not in get_all_tables():
+        # Check if CSV file exists
+        available_tables = get_available_csv_files()
+        if request.table_name not in available_tables:
             return {
                 "success": False,
-                "error": f"Table '{request.table_name}' not found in sample data"
+                "error": f"CSV file for '{request.table_name}' not found in data/csv directory"
             }
         
         # Import the table
-        result = import_table_to_db(request.table_name, if_exists=request.if_exists)
+        result = import_csv_to_db(request.table_name, if_exists=request.if_exists)
         
         if not result.get("success", False):
             return {
                 "success": False,
-                "error": result.get("error", f"Failed to import table '{request.table_name}'")
+                "error": result.get("error", f"Failed to import '{request.table_name}'")
             }
         
         return {
             "success": True,
-            "message": result.get("message", "Sample table imported successfully"),
+            "message": result.get("message", "CSV data imported successfully"),
             "row_count": result.get("row_count", 0),
             "column_count": result.get("column_count", 0)
         }
     except Exception as e:
         return {
             "success": False,
-            "error": f"Error importing sample table: {str(e)}"
+            "error": f"Error importing CSV data: {str(e)}"
         }
 
 @app.post("/csv/sample-import-related", response_model=SampleTableImportResponse)
 async def import_sample_related_tables(request: SampleTableImportRequest):
-    """Import a sample table and all related tables into the database"""
+    """Import a CSV file and all its related tables"""
     try:
-        # Validate table name
-        if request.table_name not in get_all_tables():
+        # Check if CSV file exists
+        available_tables = get_available_csv_files()
+        if request.table_name not in available_tables:
             return {
                 "success": False,
-                "error": f"Table '{request.table_name}' not found in sample data"
+                "error": f"CSV file for '{request.table_name}' not found in data/csv directory"
             }
         
         # Import the table and related tables
@@ -434,38 +443,38 @@ async def import_sample_related_tables(request: SampleTableImportRequest):
         
         return {
             "success": True,
-            "message": result.get("message", "Sample tables imported successfully"),
+            "message": result.get("message", "Related tables imported successfully"),
             "tables": result.get("tables", []),
             "details": result.get("details", {})
         }
     except Exception as e:
         return {
             "success": False,
-            "error": f"Error importing related sample tables: {str(e)}"
+            "error": f"Error importing related tables: {str(e)}"
         }
 
 @app.post("/csv/create-all-sample-tables", response_model=SampleTableImportResponse)
 async def create_all_samples():
-    """Create all sample tables with proper relationships"""
+    """Import all available CSV files with proper relationships"""
     try:
-        result = create_all_sample_tables()
+        result = import_all_available_tables()
         
         if not result.get("success", False):
             return {
                 "success": False,
-                "error": result.get("error", "Failed to create all sample tables")
+                "error": result.get("error", "Failed to import all CSV files")
             }
         
         return {
             "success": True,
-            "message": result.get("message", "All sample tables created successfully"),
+            "message": result.get("message", "All CSV files imported successfully"),
             "tables": result.get("tables", []),
             "details": result.get("details", {})
         }
     except Exception as e:
         return {
             "success": False,
-            "error": f"Error creating sample tables: {str(e)}"
+            "error": f"Error importing all CSV files: {str(e)}"
         }
 
 def start_backend():
