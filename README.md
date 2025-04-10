@@ -1,101 +1,97 @@
 # SQL Chatbot
 
-An intelligent SQL query translation platform that leverages AI to convert natural language questions into precise database queries, providing an intuitive and interactive data exploration experience.
+An intelligent SQL query translation and data exploration platform that transforms natural language questions into precise database queries and provides comprehensive data insights.
 
 ## Features
 
-- Natural language to SQL translation
-- Interactive data visualization
-- Database schema exploration
-- Query history tracking
-- Automatic data loading
+- **Natural Language to SQL**: Ask questions in plain English and get SQL queries
+- **Interactive UI**: User-friendly Streamlit frontend with chat history
+- **Data Visualization**: Automatic chart suggestions based on query results
+- **Database Explorer**: Browse tables and schema information
+- **Modular Architecture**: Organized codebase with separate backend and frontend
 
-## Technology Stack
+## Tech Stack
 
-- **Backend**: FastAPI for API endpoints
-- **Frontend**: Streamlit for interactive UI
-- **Database**: SQLite for data storage
-- **NLP**: LangChain integration with OpenAI
-- **Visualization**: Plotly and Streamlit charts
-
-## Installation and Setup
-
-### Local Development
-
-1. Clone this repository
-2. Set up your environment:
-
-```bash
-# Create and activate a virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r dependencies.txt
-```
-
-3. Set up environment variables:
-
-```bash
-# Set your OpenAI API key
-export OPENAI_API_KEY=your_openai_api_key
-```
-
-4. Run the application:
-
-```bash
-python main.py
-```
-
-### Docker Deployment
-
-1. Build and run using Docker Compose:
-
-```bash
-# Set your OpenAI API key in the environment
-export OPENAI_API_KEY=your_openai_api_key
-
-# Start the service
-docker-compose up -d
-```
-
-2. Access the application:
-   - Streamlit UI: http://localhost:5000
-   - FastAPI endpoints: http://localhost:8000
-
-## Usage
-
-1. Open the Streamlit interface at http://localhost:5000
-2. Click "Refresh Database Schema" to load table information
-3. Enter natural language questions in the text area, such as:
-   - "Show me all employees in the Engineering department"
-   - "What is the average salary by department?"
-   - "Which projects have the highest budgets?"
-4. View query results and explore visualizations
-5. Use the visualization tabs to view different chart types
-
-## Sample Questions
-
-Here are some sample questions you can ask:
-
-- "Show me all tables in the database"
-- "List all employees sorted by salary in descending order"
-- "What is the average salary by department?"
-- "Show me the projects with budgets over $100,000"
-- "Count the number of employees in each department"
-- "Find all employees working on more than one project"
-- "Which department has the highest total budget for its projects?"
-- "List employees hired after 2020"
+- **NLP**: LangChain for language processing with OpenAI integration
+- **Backend**: FastAPI for robust API endpoints
+- **Frontend**: Streamlit for interactive UI components
+- **Database**: SQLite for data storage (easily configurable)
+- **Visualization**: Plotly and Streamlit native charts
+- **Structure**: Modular Python package organization
 
 ## Project Structure
 
-- `app.py` - Streamlit frontend application
-- `fastapi_backend.py` - FastAPI backend server
-- `database.py` - Database connection and queries
-- `langchain_sql.py` - NLP processing and SQL generation
-- `init_db.py` - Automatic database initialization
-- `main.py` - Application entry point
+```
+├── src/                          # Source code
+│   ├── backend/                  # API and NLP components
+│   │   ├── api.py               # FastAPI endpoints
+│   │   └── nlp.py               # LangChain integration
+│   ├── database/                 # Database operations
+│   │   └── db.py                # Database connection and queries
+│   ├── frontend/                 # User interface
+│   │   └── app.py               # Streamlit application
+│   └── utils/                    # Utilities
+│       └── db_init.py            # Database initialization
+├── .streamlit/                   # Streamlit configuration
+│   └── config.toml              # Server settings
+├── main.py                       # Application entry point
+└── sql_chatbot.db                # SQLite database
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.9+
+- OpenAI API key
+
+### Installation
+
+1. Clone the repository
+2. Install the requirements:
+   ```
+   pip install -r requirements.txt
+   ```
+3. Set your OpenAI API key:
+   ```
+   export OPENAI_API_KEY="your-api-key"
+   ```
+
+### Running the Application
+
+```
+python main.py
+```
+
+This will:
+1. Initialize the database with sample data (if needed)
+2. Start the FastAPI backend on port 8000
+3. Launch the Streamlit frontend on port 5000
+
+## Usage
+
+1. Access the application at http://localhost:5000
+2. Ask natural language questions about the database
+3. View the generated SQL query, results, and visualizations
+4. Explore different visualization options
+5. Browse the database schema in the sidebar
+
+## Example Questions
+
+- "Show me the average salary by department"
+- "List all employees in the Engineering department"
+- "What projects have budgets over $100,000?"
+- "Find employees who are working on more than one project"
+- "Show the total hours allocated to each project"
+
+## Database Schema
+
+The sample database includes:
+
+- **employees**: Employee information (name, department, salary, etc.)
+- **projects**: Project details (name, budget, timeline, etc.)
+- **employee_projects**: Assignment of employees to projects
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is open source and available under the MIT License.
