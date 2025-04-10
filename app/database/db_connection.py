@@ -5,14 +5,29 @@ from sqlalchemy import create_engine
 
 # Base path for the app
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CONFIG_PATH = os.path.join(BASE_DIR, "app", "data", "config.json")
-DATABASE_PATH = os.path.join(BASE_DIR, "app", "data", "sql_chatbot.db")
+DATA_DIR = os.path.join(BASE_DIR, "app", "data")
+CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
+DATABASE_PATH = os.path.join(DATA_DIR, "sql_chatbot.db")
 
 # Global engine object
 _engine = None
 
+def ensure_directories():
+    """Ensure all necessary directories exist"""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "csv"), exist_ok=True)
+    
+    # Output paths created for debugging
+    print(f"BASE_DIR: {BASE_DIR}")
+    print(f"DATA_DIR: {DATA_DIR}")
+    print(f"CONFIG_PATH: {CONFIG_PATH}")
+    print(f"DATABASE_PATH: {DATABASE_PATH}")
+
 def load_config():
     """Load configuration from config file"""
+    # Make sure directories exist
+    ensure_directories()
+    
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, "r") as f:
@@ -36,7 +51,6 @@ def load_config():
     
     # Create config file if it doesn't exist
     try:
-        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
         with open(CONFIG_PATH, "w") as f:
             json.dump(default_config, f, indent=2)
     except Exception as e:

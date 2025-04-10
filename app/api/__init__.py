@@ -1,4 +1,4 @@
 # Import API functions
-from app.api.api import app, routers
+from app.api.api import app
 
-__all__ = ['app', 'routers']
+__all__ = ['app']
