@@ -1,11 +1,11 @@
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
-from app.database.connection_manager import get_active_connection
+from app.database.db_connection import get_db_engine
 
 def get_table_names():
     """Get all table names from the database"""
     try:
-        engine = get_active_connection()
+        engine = get_db_engine()
         inspector = inspect(engine)
         return inspector.get_table_names()
     except SQLAlchemyError as e:
@@ -15,7 +15,7 @@ def get_table_names():
 def get_table_schema(table_name):
     """Get schema for a specific table"""
     try:
-        engine = get_active_connection()
+        engine = get_db_engine()
         inspector = inspect(engine)
         columns = inspector.get_columns(table_name)
         return {column['name']: column['type'].__str__() for column in columns}
@@ -40,7 +40,7 @@ def get_all_table_schemas():
 def execute_sql_query(query):
     """Execute SQL query and return results"""
     try:
-        engine = get_active_connection()
+        engine = get_db_engine()
         with engine.connect() as connection:
             result = connection.execute(text(query))
             # Convert row objects to dictionaries

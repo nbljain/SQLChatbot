@@ -21,30 +21,12 @@ class TableListResponse(BaseModel):
 class SchemaResponse(BaseModel):
     schema: Dict[str, Any]
 
-# Database connection models
-class DatabaseConnectionInfo(BaseModel):
-    name: str
-    display_name: str
-    description: str = ""
+# Simple database info model
+class DatabaseInfo(BaseModel):
     type: str
-    is_active: Optional[bool] = False
+    uri: str
 
-class DatabaseConnectionList(BaseModel):
-    connections: List[DatabaseConnectionInfo]
-
-class ActiveConnectionResponse(BaseModel):
-    connection: DatabaseConnectionInfo
-
-class DatabaseConnectionRequest(BaseModel):
-    name: str
-    display_name: str
-    description: str = ""
-    type: str
-    connection_string: str
-
-class ConnectionSwitchRequest(BaseModel):
-    name: str
-
+# General response model
 class MessageResponse(BaseModel):
     success: bool
     message: str
