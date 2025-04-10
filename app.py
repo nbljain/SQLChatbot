@@ -1,241 +1,462 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import requests
-from typing import Dict, List, Any, Optional
 import json
-import time
+import traceback
+from typing import Dict, List, Any
 
-# API base URL
-API_URL = "http://localhost:8000"
+# Set page configuration
+st.set_page_config(
+    page_title="SQL Chatbot",
+    page_icon="💬",
+    layout="wide"
+)
 
-def query_backend(endpoint: str, data: Dict = None, method: str = "GET", max_retries: int = 5) -> Dict:
-    """Make a request to the backend API with retry logic"""
-    url = f"{API_URL}{endpoint}"
-    
-    # Implement retry logic for backend connection
-    retries = 0
-    while retries < max_retries:
-        try:
-            if method == "GET":
-                response = requests.get(url, timeout=10)
-            elif method == "POST":
-                response = requests.post(url, json=data, timeout=10)
-            else:
-                st.error(f"Unsupported HTTP method: {method}")
-                return {"success": False, "error": f"Unsupported HTTP method: {method}"}
-            
-            return response.json()
-        except requests.RequestException as e:
-            retries += 1
-            if retries >= max_retries:
-                st.error(f"Error connecting to backend after {max_retries} attempts: {e}")
-                return {"success": False, "error": f"Connection error: {e}"}
-            
-            # Wait before retrying (exponential backoff)
-            time.sleep(min(2**retries, 10))
-            
-            # Show a warning on first retry
-            if retries == 1:
-                st.warning("Connecting to backend server... please wait.")
-    
-    return {"success": False, "error": "Failed to connect to backend service"}
+# Backend API URL - using 127.0.0.1 instead of localhost to avoid DNS issues
+BACKEND_URL = "http://127.0.0.1:8000"
 
+# Function to fetch data from the backend API
+def query_backend(endpoint: str, data: Dict = None, method: str = "GET") -> Dict:
+    """Make a request to the backend API"""
+    try:
+        # Add debugging information
+        st.sidebar.info(f"Connecting to: {BACKEND_URL}/{endpoint}")
+        
+        if method == "GET":
+            response = requests.get(f"{BACKEND_URL}/{endpoint}", timeout=10)
+        else:  # POST
+            if data is None:
+                data = {}  # Ensure data is at least an empty dict for POST requests
+            response = requests.post(f"{BACKEND_URL}/{endpoint}", json=data, timeout=10)
+        
+        # Log the response status
+        st.sidebar.success(f"Response status: {response.status_code}")
+        
+        response.raise_for_status()  # Raise exception for HTTP errors
+        return response.json()
+    except Exception as e:
+        st.error(f"Error connecting to backend: {str(e)}")
+        st.sidebar.error(f"Backend error details: {type(e).__name__}: {str(e)}")
+        st.sidebar.error(f"Traceback: {traceback.format_exc()}")
+        return {"success": False, "error": str(e)}
+
+# Function to detect data types suitable for visualization
 def detect_chart_type(df: pd.DataFrame) -> str:
     """Detect suitable chart type based on dataframe content"""
-    num_columns = len(df.select_dtypes(include=['number']).columns)
-    cat_columns = len(df.select_dtypes(include=['object', 'category']).columns)
+    # No data or too little data
+    if df.empty or len(df) < 2:
+        return "none"
     
-    if len(df.columns) <= 1:
-        return "table"  # Default to table view for single column
+    # Count number of columns by data type
+    num_columns = df.select_dtypes(include=['number']).columns
+    cat_columns = df.select_dtypes(include=['object', 'string', 'category']).columns
+    date_columns = df.select_dtypes(include=['datetime']).columns
     
-    if num_columns >= 2:
-        return "scatter"  # At least 2 numeric columns, scatter plot is possible
+    # If we have exactly one category column and one numeric column, bar chart is good
+    if len(cat_columns) == 1 and len(num_columns) == 1:
+        # If category has few unique values, bar chart is suitable
+        if df[cat_columns[0]].nunique() <= 15:
+            return "bar"
     
-    if num_columns >= 1 and cat_columns >= 1:
-        return "bar"  # One numeric and one categorical column
+    # If we have multiple numeric columns, line chart might be good
+    if len(num_columns) >= 2:
+        return "line"
     
-    if cat_columns >= 2:
-        return "count"  # Multiple categorical columns
+    # If we have one category and multiple numerics, grouped bar might be good
+    if len(cat_columns) == 1 and len(num_columns) >= 2:
+        if df[cat_columns[0]].nunique() <= 10:
+            return "grouped_bar"
     
-    return "table"  # Default to table
+    # If we have two numeric columns, scatter plot might be suitable
+    if len(num_columns) == 2:
+        return "scatter"
+    
+    # If we have one numeric column, histogram might be suitable
+    if len(num_columns) == 1:
+        return "histogram"
+    
+    # Default to no recommended chart
+    return "none"
 
+# Function to display query results
 def display_results(results: Dict[str, Any]) -> None:
     """Display query results in Streamlit"""
-    if not results or not results.get("success", False):
+    if not results.get("success", False):
         st.error(f"Error: {results.get('error', 'Unknown error')}")
         return
     
-    # Display the generated SQL query
-    st.subheader("Generated SQL Query")
-    st.code(results.get("sql", ""), language="sql")
+    # Display the SQL query
+    with st.expander("Generated SQL Query", expanded=True):
+        st.code(results.get("sql", ""), language="sql")
     
-    # Process and display the data
+    # Display the data results
     data = results.get("data", [])
-    if not data:
-        st.info("No data returned from query.")
-        return
-    
-    # Convert to DataFrame
-    df = pd.DataFrame(data)
-    
-    # Show raw data in table
-    st.subheader("Data Table")
-    st.dataframe(df)
-    
-    # Data visualization
-    st.subheader("Data Visualization")
-    
-    # Only attempt visualization if there are enough rows
-    if len(df) > 0:
+    if data:
+        st.subheader("Query Results")
+        
+        # Convert to DataFrame for better display
+        df = pd.DataFrame(data)
+        
+        # Show data table with styling
+        with st.expander("Data Table", expanded=True):
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True
+            )
+            st.caption(f"Found {len(data)} {'row' if len(data) == 1 else 'rows'}")
+        
+        # Visualization section
+        st.subheader("Visualizations")
+        
+        # Try to detect suitable chart type
         chart_type = detect_chart_type(df)
         
-        # Get column names
-        columns = df.columns.tolist()
-        numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
-        categorical_columns = df.select_dtypes(include=['object', 'category']).columns.tolist()
+        # Convert any date-like strings to datetime
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                try:
+                    # Try to parse as datetime
+                    df[col] = pd.to_datetime(df[col], errors='ignore')
+                except:
+                    pass
         
-        # Only show visualization options if we have appropriate columns
-        if len(numeric_columns) > 0:
-            chart_types = ["Auto", "Bar", "Line", "Scatter", "Pie", "Histogram", "Box Plot"]
-            selected_chart = st.selectbox("Select Chart Type", chart_types, index=0)
+        # Convert numeric columns if they're stored as strings
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                try:
+                    df[col] = pd.to_numeric(df[col], errors='ignore')
+                except:
+                    pass
+        
+        # Get numeric and categorical columns after conversion
+        num_columns = df.select_dtypes(include=['number']).columns.tolist()
+        cat_columns = df.select_dtypes(include=['object', 'string', 'category']).columns.tolist()
+        
+        # Create tabs for different visualization options
+        viz_tabs = st.tabs(["Chart Selection", "Custom Chart", "Data Statistics"])
+        
+        with viz_tabs[0]:
+            # Recommended chart based on data
+            if chart_type != "none":
+                st.subheader("Recommended Visualization")
+                
+                if chart_type == "bar":
+                    cat_col = cat_columns[0]
+                    num_col = num_columns[0]
+                    st.bar_chart(df.set_index(cat_col)[num_col])
+                    st.caption(f"Bar chart showing {num_col} by {cat_col}")
+                
+                elif chart_type == "line":
+                    # Use the first column as index if it looks like a good candidate
+                    index_col = df.columns[0]
+                    line_cols = num_columns[:3]  # Limit to first 3 numeric columns
+                    st.line_chart(df[line_cols])
+                    st.caption(f"Line chart showing trends in {', '.join(line_cols)}")
+                
+                elif chart_type == "scatter":
+                    st.subheader("Scatter Plot")
+                    x_col = num_columns[0]
+                    y_col = num_columns[1]
+                    fig = {
+                        "data": [{"type": "scatter", "x": df[x_col], "y": df[y_col]}],
+                        "layout": {"title": f"{y_col} vs {x_col}", "xaxis": {"title": x_col}, "yaxis": {"title": y_col}}
+                    }
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                elif chart_type == "grouped_bar":
+                    st.write("Multiple numeric values grouped by category")
+                    cat_col = cat_columns[0]
+                    chart_data = df.set_index(cat_col)[num_columns[:3]]  # Limit to first 3 numeric columns
+                    st.bar_chart(chart_data)
+                
+                elif chart_type == "histogram":
+                    st.subheader("Histogram")
+                    num_col = num_columns[0]
+                    fig = {
+                        "data": [{"type": "histogram", "x": df[num_col]}],
+                        "layout": {"title": f"Distribution of {num_col}"}
+                    }
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No specific chart type automatically detected for this data")
+        
+        with viz_tabs[1]:
+            st.subheader("Create Custom Chart")
             
-            if selected_chart == "Auto":
-                selected_chart = chart_type
-            
-            # Column selection for visualization
-            if len(numeric_columns) > 0:
-                x_axis = st.selectbox("X-axis", columns, index=0)
+            # Only show options if we have enough data
+            if len(num_columns) > 0:
+                chart_types = ["Bar Chart", "Line Chart", "Scatter Plot", "Pie Chart", "Histogram"]
+                selected_chart = st.selectbox("Select Chart Type", chart_types)
                 
-                # Only show y-axis selection if there are numeric columns
-                if len(numeric_columns) > 1:
-                    y_axis = st.selectbox("Y-axis", numeric_columns, 
-                                         index=0 if x_axis != numeric_columns[0] else 1)
-                else:
-                    y_axis = numeric_columns[0]
+                if selected_chart == "Bar Chart":
+                    if cat_columns:
+                        x_axis = st.selectbox("Select X-axis (Categories)", cat_columns)
+                        y_axis = st.selectbox("Select Y-axis (Values)", num_columns)
+                        st.bar_chart(df.set_index(x_axis)[y_axis])
+                    else:
+                        st.warning("Bar charts need categorical data for the x-axis")
                 
-                # Only show color selection if there are categorical columns
-                if len(categorical_columns) > 0:
-                    color_col = st.selectbox("Color by", ["None"] + categorical_columns)
-                    if color_col == "None":
-                        color_col = None
+                elif selected_chart == "Line Chart":
+                    selected_columns = st.multiselect("Select columns to plot", num_columns, default=num_columns[:2])
+                    if selected_columns:
+                        st.line_chart(df[selected_columns])
+                    else:
+                        st.info("Please select at least one column")
                 
-                # Create the visualization
-                if selected_chart == "Bar":
-                    fig = px.bar(df, x=x_axis, y=y_axis, color=color_col, 
-                                title=f"Bar Chart: {y_axis} by {x_axis}")
-                    st.plotly_chart(fig)
+                elif selected_chart == "Scatter Plot":
+                    if len(num_columns) >= 2:
+                        x_axis = st.selectbox("Select X-axis", num_columns)
+                        y_axis = st.selectbox("Select Y-axis", [col for col in num_columns if col != x_axis], index=0)
+                        fig = {
+                            "data": [{"type": "scatter", "x": df[x_axis], "y": df[y_axis]}],
+                            "layout": {"title": f"{y_axis} vs {x_axis}", "xaxis": {"title": x_axis}, "yaxis": {"title": y_axis}}
+                        }
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning("Scatter plots require at least two numeric columns")
                 
-                elif selected_chart == "Line":
-                    fig = px.line(df, x=x_axis, y=y_axis, color=color_col,
-                                 title=f"Line Chart: {y_axis} over {x_axis}")
-                    st.plotly_chart(fig)
-                
-                elif selected_chart == "Scatter":
-                    fig = px.scatter(df, x=x_axis, y=y_axis, color=color_col,
-                                    title=f"Scatter Plot: {y_axis} vs {x_axis}")
-                    st.plotly_chart(fig)
-                
-                elif selected_chart == "Pie":
-                    fig = px.pie(df, values=y_axis, names=x_axis,
-                                title=f"Pie Chart: {y_axis} distribution by {x_axis}")
-                    st.plotly_chart(fig)
+                elif selected_chart == "Pie Chart":
+                    if cat_columns and num_columns:
+                        cat_col = st.selectbox("Select Categories", cat_columns)
+                        val_col = st.selectbox("Select Values", num_columns)
+                        
+                        # Group by category and sum values
+                        pie_data = df.groupby(cat_col)[val_col].sum().reset_index()
+                        
+                        fig = {
+                            "data": [{
+                                "type": "pie",
+                                "labels": pie_data[cat_col],
+                                "values": pie_data[val_col],
+                                "hole": 0.4,
+                            }],
+                            "layout": {"title": f"{val_col} by {cat_col}"}
+                        }
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning("Pie charts need both categorical and numeric data")
                 
                 elif selected_chart == "Histogram":
-                    fig = px.histogram(df, x=x_axis, y=y_axis, color=color_col,
-                                     title=f"Histogram: {x_axis}")
-                    st.plotly_chart(fig)
-                
-                elif selected_chart == "Box Plot":
-                    fig = px.box(df, x=x_axis, y=y_axis, color=color_col,
-                               title=f"Box Plot: {y_axis} by {x_axis}")
-                    st.plotly_chart(fig)
+                    num_col = st.selectbox("Select Numeric Column", num_columns)
+                    bins = st.slider("Number of bins", min_value=5, max_value=50, value=20)
+                    fig = {
+                        "data": [{"type": "histogram", "x": df[num_col], "nbinsx": bins}],
+                        "layout": {"title": f"Distribution of {num_col}"}
+                    }
+                    st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("Not enough numeric columns for visualization.")
-        else:
-            st.info("No numeric columns available for visualization.")
-    else:
-        st.info("Not enough data for visualization.")
-
-def main():
-    st.set_page_config(
-        page_title="SQL Chatbot",
-        page_icon="🤖",
-        layout="wide"
-    )
-    
-    st.title("Natural Language SQL Chatbot")
-    st.markdown("Ask questions about your data in plain English")
-    
-    # Check if API is available
-    try:
-        health_check = requests.get(f"{API_URL}/")
-        if health_check.status_code != 200:
-            st.error(f"Backend API is not responding correctly. Status code: {health_check.status_code}")
-            st.stop()
-    except requests.RequestException:
-        st.error("Cannot connect to backend API. Please make sure the backend service is running.")
-        st.stop()
-    
-    # Get available tables
-    tables_response = query_backend("/tables")
-    if tables_response:
-        tables = tables_response.get("tables", [])
+                st.warning("Not enough numeric data for visualization")
         
-        # Display schema information
-        with st.expander("Database Schema Information"):
-            if tables:
-                schema_response = query_backend("/schema", method="POST", data={})
-                if schema_response and schema_response.get("schema"):
-                    schema_data = schema_response.get("schema", {})
-                    
-                    for table_name, table_schema in schema_data.items():
-                        st.subheader(f"Table: {table_name}")
-                        schema_df = pd.DataFrame(
-                            [(col, data_type) for col, data_type in table_schema.items()],
-                            columns=["Column", "Type"]
-                        )
-                        st.dataframe(schema_df)
-            else:
-                st.info("No tables found in the database.")
-    
-    # Query input
-    st.subheader("Ask a question about your data")
-    
-    # Example queries
-    example_queries = [
-        "Show me all employees",
-        "What is the average performance score by department?",
-        "List employees with performance scores above 4.0",
-        "How many employees are there in each department?",
-        "Find the employee with the highest performance score",
-        "Show me all review scores in the Engineering department"
-    ]
-    
-    # Show example queries as buttons
-    st.write("Example questions:")
-    cols = st.columns(3)
-    for i, query in enumerate(example_queries):
-        col_idx = i % 3
-        if cols[col_idx].button(query, key=f"example_{i}"):
-            st.session_state.query = query
-    
-    # Text input for query
-    query = st.text_input("Enter your question:", key="query")
-    
-    if st.button("Run Query") or query:
-        if query:
-            with st.spinner("Generating SQL and fetching results..."):
-                # Send query to backend
-                results = query_backend("/query", data={"question": query}, method="POST")
-                
-                # Display results
-                if results:
-                    display_results(results)
-                else:
-                    st.error("No results returned from backend.")
-        else:
-            st.warning("Please enter a question.")
+        with viz_tabs[2]:
+            st.subheader("Data Statistics")
+            
+            # Show basic statistics for numeric columns
+            if num_columns:
+                st.write("Numeric Columns Statistics")
+                st.dataframe(df[num_columns].describe(), use_container_width=True)
+            
+            # Show value counts for categorical columns (top 10)
+            if cat_columns:
+                st.write("Categorical Columns Value Counts")
+                selected_cat = st.selectbox("Select column", cat_columns)
+                st.dataframe(df[selected_cat].value_counts().head(10).reset_index(), use_container_width=True)
+    else:
+        st.info("No data returned by the query.")
 
-if __name__ == "__main__":
-    main()
+# Initialize session state for chat history
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+# Main app layout
+st.title("💬 SQL Chatbot")
+st.subheader("Ask questions about your database in natural language")
+
+# Sidebar with database info
+with st.sidebar:
+    st.header("Database Information")
+    
+    # Fetch and display table list
+    if st.button("Refresh Database Schema"):
+        with st.spinner("Fetching database schema..."):
+            tables_response = query_backend("tables")
+            
+            if tables_response.get("tables"):
+                st.session_state.tables = tables_response.get("tables", [])
+                st.success(f"Found {len(st.session_state.tables)} tables in the database")
+            else:
+                st.error("Could not fetch database tables")
+    
+    # Display tables if available
+    if hasattr(st.session_state, "tables") and st.session_state.tables:
+        st.subheader("Database Tables")
+        for table in st.session_state.tables:
+            with st.expander(table):
+                # Fetch schema for this table when the expander is clicked
+                schema_resp = query_backend("schema", {"table_name": table}, method="POST")
+                if schema_resp.get("schema", {}).get(table):
+                    schema_data = schema_resp["schema"][table]
+                    for col, type_info in schema_data.items():
+                        st.text(f"• {col} ({type_info})")
+                else:
+                    st.text("Could not fetch schema")
+
+# Display chat history
+st.subheader("Chat History")
+for i, chat in enumerate(st.session_state.chat_history):
+    if chat["role"] == "user":
+        st.markdown(f"**You**: {chat['content']}")
+    else:
+        if "sql" in chat:
+            with st.chat_message("assistant"):
+                st.markdown("**SQL Chatbot**:")
+                with st.expander("Generated SQL", expanded=False):
+                    st.code(chat["sql"], language="sql")
+                
+                if "data" in chat and chat["data"]:
+                    df = pd.DataFrame(chat["data"])
+                    
+                    # Show data table with expander
+                    with st.expander("Data Results", expanded=True):
+                        st.dataframe(df, use_container_width=True, hide_index=True)
+                        st.caption(f"Found {len(chat['data'])} {'row' if len(chat['data']) == 1 else 'rows'}")
+                    
+                    # Add a "Show Visualizations" button for each chat response
+                    viz_key = f"viz_btn_{i}"
+                    show_viz = False
+                    
+                    if st.button(f"Show Visualizations", key=viz_key):
+                        show_viz = True
+                    
+                    if show_viz and not df.empty:
+                        # Try to detect suitable chart type
+                        chart_type = detect_chart_type(df)
+                        
+                        # Convert any date-like strings to datetime
+                        for col in df.columns:
+                            if df[col].dtype == 'object':
+                                try:
+                                    df[col] = pd.to_datetime(df[col], errors='ignore')
+                                except:
+                                    pass
+                        
+                        # Convert numeric columns if stored as strings
+                        for col in df.columns:
+                            if df[col].dtype == 'object':
+                                try:
+                                    df[col] = pd.to_numeric(df[col], errors='ignore')
+                                except:
+                                    pass
+                        
+                        # Get numeric and categorical columns after conversion
+                        num_columns = df.select_dtypes(include=['number']).columns.tolist()
+                        cat_columns = df.select_dtypes(include=['object', 'string', 'category']).columns.tolist()
+                        
+                        # Create visualization based on detected type
+                        if chart_type != "none" and num_columns:
+                            if chart_type == "bar" and cat_columns and num_columns:
+                                cat_col = cat_columns[0]
+                                num_col = num_columns[0]
+                                st.bar_chart(df.set_index(cat_col)[num_col])
+                            
+                            elif chart_type == "line" and num_columns:
+                                line_cols = num_columns[:3]  # Limit to first 3 numeric columns
+                                st.line_chart(df[line_cols])
+                            
+                            elif chart_type == "scatter" and len(num_columns) >= 2:
+                                x_col = num_columns[0]
+                                y_col = num_columns[1]
+                                fig = {
+                                    "data": [{"type": "scatter", "x": df[x_col], "y": df[y_col]}],
+                                    "layout": {"title": f"{y_col} vs {x_col}", "xaxis": {"title": x_col}, "yaxis": {"title": y_col}}
+                                }
+                                st.plotly_chart(fig, use_container_width=True)
+                            
+                            elif chart_type == "grouped_bar" and cat_columns and len(num_columns) >= 2:
+                                cat_col = cat_columns[0]
+                                chart_data = df.set_index(cat_col)[num_columns[:3]]
+                                st.bar_chart(chart_data)
+                            
+                            elif chart_type == "histogram" and num_columns:
+                                num_col = num_columns[0]
+                                fig = {
+                                    "data": [{"type": "histogram", "x": df[num_col]}],
+                                    "layout": {"title": f"Distribution of {num_col}"}
+                                }
+                                st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Show statistics
+                            with st.expander("Data Statistics"):
+                                if num_columns:
+                                    st.write("Numeric Statistics")
+                                    st.dataframe(df[num_columns].describe())
+                        else:
+                            st.info("No suitable visualization detected for this data")
+                        
+                elif "error" in chat:
+                    st.error(chat["error"])
+                else:
+                    st.info("No data returned by the query.")
+        else:
+            st.markdown(f"**SQL Chatbot**: {chat['content']}")
+
+# Input area
+st.subheader("Ask a Question")
+user_input = st.text_area("Enter your question in natural language:", 
+                           "Show me all tables in the database", 
+                           height=100)
+
+if st.button("Submit Question"):
+    if user_input:
+        # Add user message to chat history
+        st.session_state.chat_history.append({"role": "user", "content": user_input})
+        
+        # Show loading spinner
+        with st.spinner("Generating SQL and fetching results..."):
+            try:
+                # Query the backend
+                result = query_backend("query", {"question": user_input}, method="POST")
+                
+                # Log raw response for debugging
+                st.sidebar.write("Raw API Response:", result)
+                
+                # Add response to chat history
+                if result.get("success", False):
+                    chat_response = {
+                        "role": "assistant",
+                        "sql": result.get("sql", ""),
+                        "data": result.get("data", [])
+                    }
+                else:
+                    chat_response = {
+                        "role": "assistant",
+                        "content": "I couldn't process your query.",
+                        "error": result.get("error", "Unknown error")
+                    }
+                
+                st.session_state.chat_history.append(chat_response)
+            except Exception as e:
+                st.error(f"Error processing query: {str(e)}")
+                st.sidebar.error(f"Exception details: {traceback.format_exc()}")
+                
+                # Add error to chat history
+                chat_response = {
+                    "role": "assistant",
+                    "content": "I encountered an error while processing your query.",
+                    "error": str(e)
+                }
+                st.session_state.chat_history.append(chat_response)
+        
+        # Rerun to update the UI with new chat history
+        st.rerun()
+    else:
+        st.warning("Please enter a question.")
+
+# Clear chat history button
+if st.button("Clear Chat History"):
+    st.session_state.chat_history = []
+    st.rerun()
+
+# Footer
+st.markdown("---")
+st.caption("SQL Chatbot powered by LangChain, FastAPI, and Streamlit")
