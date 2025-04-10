@@ -1,15 +1,24 @@
 import os
+import logging
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
+from init_db import initialize_database
 
-# Create a SQLite database
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Initialize the database before connecting
+initialize_database()
+
+# Create a SQLite database connection
 db_url = "sqlite:///sql_chatbot.db"
 
 try:
     engine = create_engine(db_url)
-    print(f"Successfully connected to SQLite database at sql_chatbot.db")
+    logger.info(f"Successfully connected to SQLite database at sql_chatbot.db")
 except Exception as e:
-    print(f"Error creating database engine: {e}")
+    logger.error(f"Error creating database engine: {e}")
     raise
 
 def get_table_names():
