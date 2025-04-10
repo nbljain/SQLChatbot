@@ -1,9 +1,0 @@
-id,name,category,price,stock,created_at
-1,Laptop,Electronics,1200.00,15,2023-01-10
-2,Smartphone,Electronics,800.00,25,2023-01-15
-3,Coffee Table,Furniture,300.00,10,2023-02-05
-4,Desk Chair,Furniture,150.00,20,2023-02-20
-5,Headphones,Electronics,100.00,30,2023-03-10
-6,Bookshelf,Furniture,250.00,8,2023-03-25
-7,Tablet,Electronics,500.00,12,2023-04-05
-8,Sofa,Furniture,900.00,5,2023-04-15
