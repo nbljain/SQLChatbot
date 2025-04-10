@@ -1,9 +1,0 @@
-[
-  {
-    "name": "default",
-    "description": "SQLite Database",
-    "type": "sqlite",
-    "connection_string": "sqlite:///sql_chatbot.db",
-    "display_name": "SQLite Sample Database"
-  }
-]
