@@ -90,6 +90,11 @@ def display_results(results: Dict[str, Any]) -> None:
         st.error(f"Error: {results.get('error', 'Unknown error')}")
         return
     
+    # Display the explanation if available
+    explanation = results.get("explanation")
+    if explanation:
+        st.info(explanation)
+    
     # Display the SQL query
     with st.expander("Generated SQL Query", expanded=True):
         st.code(results.get("sql", ""), language="sql")
@@ -315,6 +320,11 @@ for i, chat in enumerate(st.session_state.chat_history):
         if "sql" in chat:
             with st.chat_message("assistant"):
                 st.markdown("**SQL Chatbot**:")
+                
+                # Display explanation if available
+                if "explanation" in chat:
+                    st.info(chat["explanation"])
+                
                 with st.expander("Generated SQL", expanded=False):
                     st.code(chat["sql"], language="sql")
                 
@@ -432,6 +442,10 @@ if st.button("Submit Question"):
                         "sql": result.get("sql", ""),
                         "data": result.get("data", [])
                     }
+                    
+                    # Add explanation if available
+                    if "explanation" in result:
+                        chat_response["explanation"] = result["explanation"]
                 else:
                     chat_response = {
                         "role": "assistant",
