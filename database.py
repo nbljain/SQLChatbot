@@ -4,7 +4,6 @@ from typing import Dict, List, Optional, Any
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.engine.base import Engine
-from src.utils.encryption_utils import encrypt_value, decrypt_value
 
 # Dictionary to store database connections
 db_connections: Dict[str, Engine] = {}
@@ -18,11 +17,10 @@ default_db_config = {
     "description": "SQLite Database",
     "type": "sqlite",
     "connection_string": "sqlite:///sql_chatbot.db",
-    "display_name": "SQLite Sample Database",
-    "encrypted": False
+    "display_name": "SQLite Sample Database"
 }
 
-def load_database_configs() -> List[Dict[str, Any]]:
+def load_database_configs() -> List[Dict[str, str]]:
     """Load database configurations from config file"""
     config_file = "db_config.json"
     
@@ -35,48 +33,20 @@ def load_database_configs() -> List[Dict[str, Any]]:
     try:
         with open(config_file, "r") as f:
             configs = json.load(f)
-            
             # Make sure the default config is always available
             if not any(config["name"] == "default" for config in configs):
                 configs.append(default_db_config)
-            
-            # Decrypt any encrypted connection strings
-            for config in configs:
-                if config.get("encrypted", False):
-                    try:
-                        config["connection_string"] = decrypt_value(config["connection_string"])
-                    except Exception as e:
-                        print(f"Error decrypting connection string for {config['name']}: {e}")
-                        # If decryption fails, keep the encrypted string
-            
             return configs
     except Exception as e:
         print(f"Error loading database configurations: {e}")
         return [default_db_config]
 
-def save_database_configs(configs: List[Dict[str, Any]]) -> bool:
+def save_database_configs(configs: List[Dict[str, str]]) -> bool:
     """Save database configurations to config file"""
     config_file = "db_config.json"
     try:
-        # Make a deep copy of the configs to avoid modifying the original
-        configs_to_save = []
-        for config in configs:
-            config_copy = config.copy()
-            
-            # Encrypt the connection string if not already encrypted
-            if not config.get("encrypted", False) and "connection_string" in config:
-                try:
-                    config_copy["connection_string"] = encrypt_value(config["connection_string"])
-                    config_copy["encrypted"] = True
-                except Exception as e:
-                    print(f"Error encrypting connection string for {config['name']}: {e}")
-                    # If encryption fails, save as plaintext but mark as not encrypted
-                    config_copy["encrypted"] = False
-            
-            configs_to_save.append(config_copy)
-        
         with open(config_file, "w") as f:
-            json.dump(configs_to_save, f, indent=2)
+            json.dump(configs, f, indent=2)
         return True
     except Exception as e:
         print(f"Error saving database configurations: {e}")

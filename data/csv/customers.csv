@@ -1,6 +1,0 @@
-id,name,email,phone,address,city,created_at
-1,John Smith,john@example.com,555-1234,123 Main St,New York,2023-01-05
-2,Emily Johnson,emily@example.com,555-5678,456 Oak Ave,Los Angeles,2023-02-10
-3,Michael Brown,michael@example.com,555-9012,789 Pine Rd,Chicago,2023-03-15
-4,Sarah Davis,sarah@example.com,555-3456,101 Elm St,Houston,2023-04-20
-5,David Wilson,david@example.com,555-7890,202 Maple Ave,Phoenix,2023-05-25
