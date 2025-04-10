@@ -1,23 +1,33 @@
-import os
-import sys
-import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional, Union
-
-# Make sure current directory is in path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-
-# Import API models and route handlers
-from app.api.models import QueryRequest, QueryResponse, SchemaRequest, TableListResponse, SchemaResponse
-from app.database.db_operations import get_table_names, get_table_schema, get_all_table_schemas, execute_sql_query
-from app.models.sql_generator import generate_sql_query
+from typing import List, Dict, Any, Optional
+import uvicorn
+from database import get_table_names, get_table_schema, execute_sql_query
+from langchain_sql import generate_sql_query
 
 # Initialize FastAPI app
 app = FastAPI(title="SQL Chatbot API")
 
+# Define request and response models
+class QueryRequest(BaseModel):
+    question: str
+
+class QueryResponse(BaseModel):
+    success: bool
+    sql: Optional[str] = None
+    data: Optional[List[Dict[str, Any]]] = None
+    error: Optional[str] = None
+
+class SchemaRequest(BaseModel):
+    table_name: Optional[str] = None
+
+class TableListResponse(BaseModel):
+    tables: List[str]
+
+class SchemaResponse(BaseModel):
+    schema: Dict[str, Any]
+
+# API endpoints
 @app.get("/")
 async def root():
     return {"message": "SQL Chatbot API is running"}
@@ -38,7 +48,11 @@ async def get_schema(request: SchemaRequest):
         return {"schema": {request.table_name: schema}}
     else:
         # Get all table schemas
-        return {"schema": get_all_table_schemas()}
+        tables = get_table_names()
+        full_schema = {}
+        for table in tables:
+            full_schema[table] = get_table_schema(table)
+        return {"schema": full_schema}
 
 @app.post("/query", response_model=QueryResponse)
 async def process_query(request: QueryRequest):
@@ -72,19 +86,6 @@ async def process_query(request: QueryRequest):
         "data": query_result["data"]
     }
 
-@app.get("/db-info")
-async def get_db_info():
-    """Get database connection information"""
-    from app.database.db_connection import load_config
-    config = load_config()
-    # Return sanitized config (without sensitive connection details)
-    return {
-        "database_type": "sqlite"
-    }
-
-def run_server():
-    """Run the FastAPI server"""
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
+# Run the API with Uvicorn when the script is executed directly
 if __name__ == "__main__":
-    run_server()
+    uvicorn.run("fastapi_backend:app", host="0.0.0.0", port=8000, reload=True)
