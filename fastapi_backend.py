@@ -1,20 +1,19 @@
 import os
-import json
+import sys
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional, Union
 
-from app.database.db_connection import get_db_engine, load_config
-from app.database.db_operations import (
-    get_table_names, get_table_schema, get_all_table_schemas,
-    execute_sql_query
-)
-from app.models import generate_sql_query
-from app.api.models import (
-    QueryRequest, QueryResponse, SchemaRequest, TableListResponse,
-    SchemaResponse
-)
+# Make sure current directory is in path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+# Import API models and route handlers
+from app.api.models import QueryRequest, QueryResponse, SchemaRequest, TableListResponse, SchemaResponse
+from app.database.db_operations import get_table_names, get_table_schema, get_all_table_schemas, execute_sql_query
+from app.models.sql_generator import generate_sql_query
 
 # Initialize FastAPI app
 app = FastAPI(title="SQL Chatbot API")
@@ -76,19 +75,16 @@ async def process_query(request: QueryRequest):
 @app.get("/db-info")
 async def get_db_info():
     """Get database connection information"""
+    from app.database.db_connection import load_config
     config = load_config()
     # Return sanitized config (without sensitive connection details)
     return {
-        "database_type": config["database"]["type"],
-        "app_port": config["app"]["port"],
-        "api_port": config["api"]["port"]
+        "database_type": "sqlite"
     }
 
+def run_server():
+    """Run the FastAPI server"""
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
 if __name__ == "__main__":
-    # Load configuration
-    config = load_config()
-    api_host = config["api"]["host"]
-    api_port = config["api"]["port"]
-    
-    # Start server
-    uvicorn.run("fastapi_backend:app", host=api_host, port=api_port, reload=True)
+    run_server()

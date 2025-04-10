@@ -1,11 +1,11 @@
 employee_id,review_date,performance_score,review_text,reviewer_id,department,improvement_needed,strengths,goals_met
-1,2023-06-15,4.5,"Excellent team player with strong technical skills. Has been instrumental in the success of Project X.",5,Engineering,Time management,"Problem solving, technical expertise",Yes
-2,2023-06-10,3.8,"Good communication skills but needs to improve on meeting deadlines.",7,Marketing,Meeting deadlines,"Communication, creativity",Partially
-3,2023-05-22,4.2,"Shows great leadership potential. Has mentored junior team members effectively.",5,Engineering,Documentation,"Leadership, mentoring",Yes
-4,2023-06-18,3.5,"Meets expectations but could take more initiative on projects.",9,Sales,Initiative taking,"Customer relations, product knowledge",Yes
-5,2023-05-30,4.7,"Outstanding performance this quarter. Exceeded sales targets by 30%.",10,Sales,None,"Sales strategy, customer retention",Yes
-6,2023-06-12,3.0,"Needs improvement in technical skills. Has shown willingness to learn.",8,IT,Technical skills,"Teamwork, adaptability",No
-7,2023-06-05,4.0,"Reliable team member who consistently delivers quality work.",5,Engineering,Project planning,"Reliability, code quality",Yes
-8,2023-05-25,3.9,"Good analytical skills. Has contributed valuable insights to the marketing strategy.",7,Marketing,Public speaking,"Data analysis, market research",Yes
-9,2023-06-20,2.8,"Performance below expectations. Needs significant improvement in project management.",10,Project Management,Project management,"Documentation, organization",No
-10,2023-06-08,4.3,"Excellent customer service skills. Has received positive feedback from clients.",9,Sales,Technical knowledge,"Customer service, relationship building",Yes
+1,2023-06-15,4.5,"Great work on the recent project. John showed excellent problem-solving skills.",101,Engineering,"Could improve documentation practices","Technical skills, Problem solving","Exceeded sprint goals"
+2,2023-06-10,3.8,"Sarah has been a valuable team member, especially with client communications.",102,Marketing,"Needs to meet deadlines more consistently","Client relations, Creativity","Met most targets"
+3,2023-05-22,4.2,"Michael demonstrated strong coding abilities and mentored junior developers well.",101,Engineering,"Should participate more in team meetings","Technical expertise, Mentoring","Met all objectives"
+4,2023-06-18,3.5,"Emily performs well in sales presentations but needs more follow-up with leads.",103,Sales,"Follow-up consistency needs improvement","Presentation skills, Customer rapport","Achieved 80% of targets"
+5,2023-05-30,4.7,"David consistently exceeds his sales targets and has excellent client relationships.",103,Sales,"Minor improvements needed in CRM data entry","Closing deals, Client retention","Exceeded all targets"
+6,2023-06-05,3.9,"Jennifer showed creative solutions in the marketing campaign design.",102,Marketing,"Sometimes misses internal deadlines","Creativity, Design skills","Met key objectives"
+7,2023-05-15,4.1,"Robert effectively implemented the new database architecture.",101,Engineering,"Documentation could be more thorough","Technical implementation, Problem-solving","Met critical milestones"
+8,2023-06-20,3.4,"Lisa needs improvement in meeting her sales quotas consistently.",103,Sales,"Needs to improve closing techniques","Initial customer engagement, Product knowledge","Missed several targets"
+9,2023-06-01,4.3,"Kevin demonstrated excellent technical skills in debugging complex issues.",101,Engineering,"Could improve communication with non-technical team members","Debugging, System architecture","Exceeded expectations"
+10,2023-05-25,4.0,"Amanda successfully managed the social media campaign with good results.",102,Marketing,"Analytics reporting needs more detail","Content creation, Campaign management","Met all KPIs"
