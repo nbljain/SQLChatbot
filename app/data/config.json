@@ -1,0 +1,15 @@
+{
+  "database": {
+    "uri": "sqlite:///app/data/sql_chatbot.db",
+    "type": "sqlite"
+  },
+  "app": {
+    "port": 5000,
+    "host": "0.0.0.0",
+    "debug": false
+  },
+  "api": {
+    "port": 8000,
+    "host": "0.0.0.0"
+  }
+}

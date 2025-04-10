@@ -1,0 +1,11 @@
+employee_id,review_date,performance_score,review_text,reviewer_id,department,improvement_needed,strengths,goals_met
+1,2023-06-15,4.5,"Excellent team player with strong technical skills. Has been instrumental in the success of Project X.",5,Engineering,Time management,"Problem solving, technical expertise",Yes
+2,2023-06-10,3.8,"Good communication skills but needs to improve on meeting deadlines.",7,Marketing,Meeting deadlines,"Communication, creativity",Partially
+3,2023-05-22,4.2,"Shows great leadership potential. Has mentored junior team members effectively.",5,Engineering,Documentation,"Leadership, mentoring",Yes
+4,2023-06-18,3.5,"Meets expectations but could take more initiative on projects.",9,Sales,Initiative taking,"Customer relations, product knowledge",Yes
+5,2023-05-30,4.7,"Outstanding performance this quarter. Exceeded sales targets by 30%.",10,Sales,None,"Sales strategy, customer retention",Yes
+6,2023-06-12,3.0,"Needs improvement in technical skills. Has shown willingness to learn.",8,IT,Technical skills,"Teamwork, adaptability",No
+7,2023-06-05,4.0,"Reliable team member who consistently delivers quality work.",5,Engineering,Project planning,"Reliability, code quality",Yes
+8,2023-05-25,3.9,"Good analytical skills. Has contributed valuable insights to the marketing strategy.",7,Marketing,Public speaking,"Data analysis, market research",Yes
+9,2023-06-20,2.8,"Performance below expectations. Needs significant improvement in project management.",10,Project Management,Project management,"Documentation, organization",No
+10,2023-06-08,4.3,"Excellent customer service skills. Has received positive feedback from clients.",9,Sales,Technical knowledge,"Customer service, relationship building",Yes
