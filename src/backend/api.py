@@ -9,7 +9,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from src.database.db import get_table_names, get_table_schema, execute_sql_query
-from src.backend.nlp import generate_sql_query
+from src.backend.nlp import generate_sql_query, generate_answer
 
 # Initialize FastAPI app
 app = FastAPI(title="SQL Chatbot API")
@@ -22,6 +22,7 @@ class QueryResponse(BaseModel):
     success: bool
     sql: Optional[str] = None
     data: Optional[List[Dict[str, Any]]] = None
+    explanation: Optional[str] = None
     error: Optional[str] = None
 
 class SchemaRequest(BaseModel):
@@ -62,7 +63,7 @@ async def get_schema(request: SchemaRequest):
 
 @app.post("/query", response_model=QueryResponse)
 async def process_query(request: QueryRequest):
-    """Process natural language query and return SQL results"""
+    """Process natural language query and return SQL results with explanation"""
     if not request.question:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
     
@@ -85,12 +86,25 @@ async def process_query(request: QueryRequest):
             "error": query_result["error"]
         }
     
-    # Return successful response
-    return {
+    # Generate a natural language explanation of the results
+    explanation_result = generate_answer(
+        question=request.question,
+        sql_query=sql_result["sql"],
+        query_results=query_result["data"]
+    )
+    
+    # Return successful response with explanation
+    response = {
         "success": True,
         "sql": sql_result["sql"],
         "data": query_result["data"]
     }
+    
+    # Add explanation if available
+    if explanation_result["success"]:
+        response["explanation"] = explanation_result["explanation"]
+    
+    return response
 
 # Run the API with Uvicorn when the script is executed directly
 if __name__ == "__main__":

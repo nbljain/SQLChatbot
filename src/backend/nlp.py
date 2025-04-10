@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import logging
 from langchain.chains import LLMChain
 from langchain_openai import ChatOpenAI
@@ -96,6 +97,43 @@ Your task is to generate a valid SQLite SQL query based on the user's question.
     )
     
     return chain
+
+def generate_answer(question, sql_query, query_results):
+    """Generate a natural language explanation of the SQL query results"""
+    try:
+        llm = get_llm()
+        
+        # Convert query results to a string representation
+        results_str = json.dumps(query_results, indent=2)
+        
+        # Define the prompt for generating the explanation
+        prompt = (
+            "Given the following user question, corresponding SQL query, "
+            "and SQL result, answer the user question in a clear, concise way.\n\n"
+            f"Question: {question}\n\n"
+            f"SQL Query: {sql_query}\n\n"
+            f"SQL Result: {results_str}\n\n"
+            "Provide a clear explanation that answers the user's question based on the data. "
+            "Include key insights, patterns, or notable findings. "
+            "Format numbers appropriately (e.g., with commas for thousands) and use precise language. "
+            "If there are trends or comparisons worth noting, mention them. "
+            "Keep your answer concise but informative."
+        )
+        
+        # Generate the explanation
+        response = llm.invoke(prompt)
+        explanation = response.content.strip()
+        
+        return {
+            "success": True,
+            "explanation": explanation
+        }
+    except Exception as e:
+        logger.error(f"Error generating explanation: {str(e)}", exc_info=True)
+        return {
+            "success": False,
+            "error": f"Error generating explanation: {str(e)}"
+        }
 
 def generate_sql_query(user_question):
     """Generate SQL from natural language question"""
