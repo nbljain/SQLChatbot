@@ -1,613 +1,264 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import requests
 import json
-import traceback
 from typing import Dict, List, Any
 
-# Set page configuration
+# Set page title and configuration
 st.set_page_config(
     page_title="SQL Chatbot",
-    page_icon="💬",
-    layout="wide"
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Backend API URL - using 127.0.0.1 instead of localhost to avoid DNS issues
-BACKEND_URL = "http://127.0.0.1:8000"
+# API URL
+API_BASE_URL = "http://localhost:8000"
 
-# Function to fetch data from the backend API
 def query_backend(endpoint: str, data: Dict = None, method: str = "GET") -> Dict:
     """Make a request to the backend API"""
+    url = f"{API_BASE_URL}{endpoint}"
     try:
-        # Add debugging information
-        st.sidebar.info(f"Connecting to: {BACKEND_URL}/{endpoint}")
-        
         if method == "GET":
-            response = requests.get(f"{BACKEND_URL}/{endpoint}", timeout=10)
-        else:  # POST
-            if data is None:
-                data = {}  # Ensure data is at least an empty dict for POST requests
-            response = requests.post(f"{BACKEND_URL}/{endpoint}", json=data, timeout=10)
-        
-        # Log the response status
-        st.sidebar.success(f"Response status: {response.status_code}")
-        
-        response.raise_for_status()  # Raise exception for HTTP errors
+            response = requests.get(url, timeout=10)
+        elif method == "POST":
+            response = requests.post(url, json=data, timeout=10)
+        elif method == "DELETE":
+            response = requests.delete(url, timeout=10)
+        else:
+            return {"success": False, "error": f"Unsupported method: {method}"}
+            
+        response.raise_for_status()
         return response.json()
-    except Exception as e:
-        st.error(f"Error connecting to backend: {str(e)}")
-        st.sidebar.error(f"Backend error details: {type(e).__name__}: {str(e)}")
-        st.sidebar.error(f"Traceback: {traceback.format_exc()}")
-        return {"success": False, "error": str(e)}
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "error": f"API error: {str(e)}"}
+    except ValueError as e:
+        return {"success": False, "error": f"Invalid response from API: {str(e)}"}
 
-# Function to detect data types suitable for visualization
 def detect_chart_type(df: pd.DataFrame) -> str:
     """Detect suitable chart type based on dataframe content"""
-    # No data or too little data
-    if df.empty or len(df) < 2:
-        return "none"
+    # Some basic heuristics for chart type detection
+    num_columns = len(df.select_dtypes(include='number').columns)
+    num_categorical = len(df.select_dtypes(include=['object', 'category']).columns)
+    row_count = len(df)
     
-    # Count number of columns by data type
-    num_columns = df.select_dtypes(include=['number']).columns
-    cat_columns = df.select_dtypes(include=['object', 'string', 'category']).columns
-    date_columns = df.select_dtypes(include=['datetime']).columns
+    # For single numeric column with categories, use bar chart
+    if num_columns == 1 and num_categorical >= 1:
+        return "bar"
     
-    # If we have exactly one category column and one numeric column, bar chart is good
-    if len(cat_columns) == 1 and len(num_columns) == 1:
-        # If category has few unique values, bar chart is suitable
-        if df[cat_columns[0]].nunique() <= 15:
-            return "bar"
-    
-    # If we have multiple numeric columns, line chart might be good
-    if len(num_columns) >= 2:
-        return "line"
-    
-    # If we have one category and multiple numerics, grouped bar might be good
-    if len(cat_columns) == 1 and len(num_columns) >= 2:
-        if df[cat_columns[0]].nunique() <= 10:
-            return "grouped_bar"
-    
-    # If we have two numeric columns, scatter plot might be suitable
-    if len(num_columns) == 2:
+    # For 2+ numeric columns, use scatter
+    if num_columns >= 2:
         return "scatter"
     
-    # If we have one numeric column, histogram might be suitable
-    if len(num_columns) == 1:
+    # Time series data often has a datetime column
+    datetime_cols = [col for col in df.columns if pd.api.types.is_datetime64_any_dtype(df[col])]
+    if datetime_cols and num_columns >= 1:
+        return "line"
+    
+    # For 1 numeric column distribution
+    if num_columns == 1 and num_categorical == 0:
         return "histogram"
     
-    # Default to no recommended chart
-    return "none"
+    # Proportional data (percentages, parts of whole)
+    if row_count < 10 and num_columns == 1:
+        return "pie"
+    
+    # Default to bar chart
+    return "bar"
 
-# Function to display query results
 def display_results(results: Dict[str, Any]) -> None:
     """Display query results in Streamlit"""
     if not results.get("success", False):
-        st.error(f"Error: {results.get('error', 'Unknown error')}")
+        st.error(results.get("error", "Unknown error occurred"))
         return
     
     # Display the SQL query
     with st.expander("Generated SQL Query", expanded=True):
-        st.code(results.get("sql", ""), language="sql")
+        st.code(results["sql"], language="sql")
     
-    # Display the data results
+    # Process results
     data = results.get("data", [])
-    if data:
-        st.subheader("Query Results")
+    if not data:
+        st.info("Query executed successfully but returned no data.")
+        return
+    
+    # Convert to dataframe
+    df = pd.DataFrame(data)
+    
+    # Display data as table
+    st.subheader("Results")
+    st.dataframe(df, use_container_width=True)
+    
+    # Determine if we can create a visualization
+    num_columns = len(df.select_dtypes(include='number').columns)
+    if len(df) > 0 and num_columns > 0:
+        st.subheader("Visualization")
         
-        # Convert to DataFrame for better display
-        df = pd.DataFrame(data)
+        col1, col2 = st.columns([3, 1])
         
-        # Show data table with styling
-        with st.expander("Data Table", expanded=True):
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True
+        # Auto-detect chart type
+        suggested_chart = detect_chart_type(df)
+        
+        with col2:
+            # Chart type selector
+            chart_type = st.selectbox(
+                "Chart type:",
+                options=["bar", "line", "scatter", "pie", "histogram"],
+                index=["bar", "line", "scatter", "pie", "histogram"].index(suggested_chart)
             )
-            st.caption(f"Found {len(data)} {'row' if len(data) == 1 else 'rows'}")
-        
-        # Visualization section
-        st.subheader("Visualizations")
-        
-        # Try to detect suitable chart type
-        chart_type = detect_chart_type(df)
-        
-        # Convert any date-like strings to datetime
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                try:
-                    # Try to parse as datetime
-                    df[col] = pd.to_datetime(df[col], errors='ignore')
-                except:
-                    pass
-        
-        # Convert numeric columns if they're stored as strings
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                try:
-                    df[col] = pd.to_numeric(df[col], errors='ignore')
-                except:
-                    pass
-        
-        # Get numeric and categorical columns after conversion
-        num_columns = df.select_dtypes(include=['number']).columns.tolist()
-        cat_columns = df.select_dtypes(include=['object', 'string', 'category']).columns.tolist()
-        
-        # Create tabs for different visualization options
-        viz_tabs = st.tabs(["Chart Selection", "Custom Chart", "Data Statistics"])
-        
-        with viz_tabs[0]:
-            # Recommended chart based on data
-            if chart_type != "none":
-                st.subheader("Recommended Visualization")
+            
+            # Pick columns for X and Y axes
+            numeric_cols = df.select_dtypes(include='number').columns.tolist()
+            categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+            datetime_cols = [col for col in df.columns if pd.api.types.is_datetime64_any_dtype(df[col])]
+            
+            # Default columns based on chart type
+            x_default = 0
+            if chart_type == "bar" and categorical_cols:
+                x_options = categorical_cols + numeric_cols
+                x_default = 0
+            elif chart_type == "line" and datetime_cols:
+                x_options = datetime_cols + numeric_cols + categorical_cols
+                x_default = 0
+            else:
+                x_options = df.columns.tolist()
+            
+            x_axis = st.selectbox("X axis:", options=x_options, index=min(x_default, len(x_options)-1))
+            
+            if chart_type != "histogram" and chart_type != "pie":
+                y_default = 0
+                if numeric_cols and x_axis in numeric_cols:
+                    # If x is numeric, pick a different numeric column for y if available
+                    other_numeric = [col for col in numeric_cols if col != x_axis]
+                    if other_numeric:
+                        y_options = other_numeric
+                    else:
+                        y_options = numeric_cols
+                else:
+                    y_options = numeric_cols
                 
+                if not y_options:
+                    y_options = df.columns.tolist()
+                
+                y_axis = st.selectbox("Y axis:", options=y_options, index=min(y_default, len(y_options)-1))
+            
+            # Color option for more complex charts
+            if chart_type in ["scatter", "bar", "line"]:
+                color_options = ["None"] + categorical_cols
+                color_col = st.selectbox("Color by:", options=color_options)
+                if color_col == "None":
+                    color_col = None
+        
+        with col1:
+            # Create the appropriate chart based on selection
+            try:
                 if chart_type == "bar":
-                    cat_col = cat_columns[0]
-                    num_col = num_columns[0]
-                    st.bar_chart(df.set_index(cat_col)[num_col])
-                    st.caption(f"Bar chart showing {num_col} by {cat_col}")
+                    fig = px.bar(df, x=x_axis, y=y_axis if chart_type != "pie" else None, 
+                                color=color_col, height=400)
+                    st.plotly_chart(fig, use_container_width=True)
                 
                 elif chart_type == "line":
-                    # Use the first column as index if it looks like a good candidate
-                    index_col = df.columns[0]
-                    line_cols = num_columns[:3]  # Limit to first 3 numeric columns
-                    st.line_chart(df[line_cols])
-                    st.caption(f"Line chart showing trends in {', '.join(line_cols)}")
+                    fig = px.line(df, x=x_axis, y=y_axis, color=color_col, height=400)
+                    st.plotly_chart(fig, use_container_width=True)
                 
                 elif chart_type == "scatter":
-                    st.subheader("Scatter Plot")
-                    x_col = num_columns[0]
-                    y_col = num_columns[1]
-                    fig = {
-                        "data": [{"type": "scatter", "x": df[x_col], "y": df[y_col]}],
-                        "layout": {"title": f"{y_col} vs {x_col}", "xaxis": {"title": x_col}, "yaxis": {"title": y_col}}
-                    }
+                    fig = px.scatter(df, x=x_axis, y=y_axis, color=color_col, height=400)
                     st.plotly_chart(fig, use_container_width=True)
                 
-                elif chart_type == "grouped_bar":
-                    st.write("Multiple numeric values grouped by category")
-                    cat_col = cat_columns[0]
-                    chart_data = df.set_index(cat_col)[num_columns[:3]]  # Limit to first 3 numeric columns
-                    st.bar_chart(chart_data)
+                elif chart_type == "pie":
+                    # For pie charts, x_axis is the category and y_axis is the value
+                    fig = px.pie(df, names=x_axis, values=numeric_cols[0] if numeric_cols else None, height=400)
+                    st.plotly_chart(fig, use_container_width=True)
                 
                 elif chart_type == "histogram":
-                    st.subheader("Histogram")
-                    num_col = num_columns[0]
-                    fig = {
-                        "data": [{"type": "histogram", "x": df[num_col]}],
-                        "layout": {"title": f"Distribution of {num_col}"}
-                    }
+                    fig = px.histogram(df, x=x_axis, height=400)
                     st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("No specific chart type automatically detected for this data")
-        
-        with viz_tabs[1]:
-            st.subheader("Create Custom Chart")
             
-            # Only show options if we have enough data
-            if len(num_columns) > 0:
-                chart_types = ["Bar Chart", "Line Chart", "Scatter Plot", "Pie Chart", "Histogram"]
-                selected_chart = st.selectbox("Select Chart Type", chart_types)
-                
-                if selected_chart == "Bar Chart":
-                    if cat_columns:
-                        x_axis = st.selectbox("Select X-axis (Categories)", cat_columns)
-                        y_axis = st.selectbox("Select Y-axis (Values)", num_columns)
-                        st.bar_chart(df.set_index(x_axis)[y_axis])
-                    else:
-                        st.warning("Bar charts need categorical data for the x-axis")
-                
-                elif selected_chart == "Line Chart":
-                    selected_columns = st.multiselect("Select columns to plot", num_columns, default=num_columns[:2])
-                    if selected_columns:
-                        st.line_chart(df[selected_columns])
-                    else:
-                        st.info("Please select at least one column")
-                
-                elif selected_chart == "Scatter Plot":
-                    if len(num_columns) >= 2:
-                        x_axis = st.selectbox("Select X-axis", num_columns)
-                        y_axis = st.selectbox("Select Y-axis", [col for col in num_columns if col != x_axis], index=0)
-                        fig = {
-                            "data": [{"type": "scatter", "x": df[x_axis], "y": df[y_axis]}],
-                            "layout": {"title": f"{y_axis} vs {x_axis}", "xaxis": {"title": x_axis}, "yaxis": {"title": y_axis}}
-                        }
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.warning("Scatter plots require at least two numeric columns")
-                
-                elif selected_chart == "Pie Chart":
-                    if cat_columns and num_columns:
-                        cat_col = st.selectbox("Select Categories", cat_columns)
-                        val_col = st.selectbox("Select Values", num_columns)
-                        
-                        # Group by category and sum values
-                        pie_data = df.groupby(cat_col)[val_col].sum().reset_index()
-                        
-                        fig = {
-                            "data": [{
-                                "type": "pie",
-                                "labels": pie_data[cat_col],
-                                "values": pie_data[val_col],
-                                "hole": 0.4,
-                            }],
-                            "layout": {"title": f"{val_col} by {cat_col}"}
-                        }
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.warning("Pie charts need both categorical and numeric data")
-                
-                elif selected_chart == "Histogram":
-                    num_col = st.selectbox("Select Numeric Column", num_columns)
-                    bins = st.slider("Number of bins", min_value=5, max_value=50, value=20)
-                    fig = {
-                        "data": [{"type": "histogram", "x": df[num_col], "nbinsx": bins}],
-                        "layout": {"title": f"Distribution of {num_col}"}
-                    }
-                    st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("Not enough numeric data for visualization")
-        
-        with viz_tabs[2]:
-            st.subheader("Data Statistics")
-            
-            # Show basic statistics for numeric columns
-            if num_columns:
-                st.write("Numeric Columns Statistics")
-                st.dataframe(df[num_columns].describe(), use_container_width=True)
-            
-            # Show value counts for categorical columns (top 10)
-            if cat_columns:
-                st.write("Categorical Columns Value Counts")
-                selected_cat = st.selectbox("Select column", cat_columns)
-                st.dataframe(df[selected_cat].value_counts().head(10).reset_index(), use_container_width=True)
-    else:
-        st.info("No data returned by the query.")
-
-# Initialize session state for chat history
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-
-# Main app layout
-st.title("💬 SQL Chatbot")
-st.subheader("Ask questions about your database in natural language")
-
-# Sidebar with database info
-with st.sidebar:
-    st.header("Database Management")
-    
-    # Database connection management
-    st.subheader("Database Connections")
-    
-    # Get current active connection
-    if "active_connection" not in st.session_state:
-        with st.spinner("Fetching active connection..."):
-            try:
-                active_conn_resp = query_backend("connections/active")
-                if active_conn_resp and "connection" in active_conn_resp:
-                    st.session_state.active_connection = active_conn_resp["connection"]
             except Exception as e:
-                st.error(f"Error fetching active connection: {str(e)}")
-                st.session_state.active_connection = {"name": "default", "display_name": "Default SQLite"}
+                st.error(f"Error creating visualization: {str(e)}")
+
+def main():
+    # Sidebar for database connection selection
+    st.sidebar.title("Database Connections")
     
-    # Display active connection
-    if "active_connection" in st.session_state:
-        st.info(f"Active Connection: {st.session_state.active_connection.get('display_name', 'Unknown')}")
+    # Get all available connections
+    connections_resp = query_backend("/connections", method="GET")
     
-    # Option to switch connection
-    switch_tab, add_tab, manage_tab = st.tabs(["Switch", "Add New", "Manage"])
+    if connections_resp.get("success", False) == False and "connections" in connections_resp:
+        connections = connections_resp["connections"]
+    else:
+        connections = []
     
-    with switch_tab:
-        # Get all available connections
-        if "connections" not in st.session_state or st.button("Refresh Connections", key="refresh_connections"):
-            with st.spinner("Fetching connections..."):
-                try:
-                    conn_resp = query_backend("connections")
-                    if conn_resp and "connections" in conn_resp:
-                        st.session_state.connections = conn_resp["connections"]
-                except Exception as e:
-                    st.error(f"Error fetching connections: {str(e)}")
-                    st.session_state.connections = []
-        
-        # Display connections for switching
-        if "connections" in st.session_state and st.session_state.connections:
-            connection_names = [f"{c['display_name']} ({c['type']})" for c in st.session_state.connections]
-            conn_map = {f"{c['display_name']} ({c['type']})": c["name"] for c in st.session_state.connections}
+    # Get active connection
+    active_conn_resp = query_backend("/connections/active", method="GET")
+    active_conn = None
+    if active_conn_resp.get("success", False) == False and "connection" in active_conn_resp:
+        active_conn = active_conn_resp["connection"]
+    
+    # Display available connections
+    if connections:
+        st.sidebar.subheader("Available Connections")
+        for conn in connections:
+            is_active = conn.get("is_active", False) or (active_conn and active_conn.get("name") == conn.get("name"))
             
-            selected_conn = st.selectbox(
-                "Select Connection", 
-                connection_names,
-                index=next((i for i, c in enumerate(st.session_state.connections) 
-                         if c.get("is_active", False)), 0)
-            )
-            
-            if st.button("Switch Connection"):
-                conn_name = conn_map.get(selected_conn)
-                if conn_name:
-                    with st.spinner(f"Switching to {selected_conn}..."):
-                        try:
-                            switch_resp = query_backend("connections/switch", {"name": conn_name}, method="POST")
-                            if switch_resp and switch_resp.get("success"):
-                                st.success(switch_resp.get("message", "Switched successfully"))
-                                # Update active connection
-                                active_conn_resp = query_backend("connections/active")
-                                if active_conn_resp and "connection" in active_conn_resp:
-                                    st.session_state.active_connection = active_conn_resp["connection"]
-                                # Clear cached schema
-                                if "tables" in st.session_state:
-                                    del st.session_state.tables
-                                st.rerun()
-                            else:
-                                st.error("Failed to switch connection")
-                        except Exception as e:
-                            st.error(f"Error switching connection: {str(e)}")
+            conn_label = f"{conn['display_name']} ({'Active' if is_active else 'Switch'})"
+            if st.sidebar.button(conn_label, key=f"conn_{conn['name']}"):
+                if not is_active:
+                    # Switch to this connection
+                    switch_resp = query_backend("/connections/switch", {"name": conn["name"]}, "POST")
+                    if switch_resp.get("success", True):
+                        st.toast(f"Switched to {conn['display_name']}")
+                        st.rerun()
+                    else:
+                        st.sidebar.error(switch_resp.get("error", "Failed to switch connection"))
     
-    with add_tab:
-        st.write("Add a new database connection")
-        new_conn_name = st.text_input("Connection Name (unique identifier)", key="new_conn_name")
-        new_conn_display = st.text_input("Display Name", key="new_conn_display")
-        new_conn_desc = st.text_area("Description", key="new_conn_desc")
-        new_conn_type = st.selectbox("Database Type", ["sqlite", "postgresql", "mysql", "oracle", "mssql"], key="new_conn_type")
-        
-        # Connection string help text
-        conn_string_help = {
-            "sqlite": "sqlite:///path/to/database.db",
-            "postgresql": "postgresql://user:password@host:port/dbname",
-            "mysql": "mysql://user:password@host:port/dbname",
-            "oracle": "oracle://user:password@host:port/dbname",
-            "mssql": "mssql+pyodbc://user:password@host:port/dbname?driver=ODBC+Driver"
-        }
-        
-        new_conn_string = st.text_input(
-            "Connection String", 
-            help=conn_string_help.get(new_conn_type, ""), 
-            key="new_conn_string"
-        )
+    # Option to add a new connection
+    with st.sidebar.expander("Add New Connection"):
+        conn_name = st.text_input("Connection Name (unique)", key="new_conn_name")
+        conn_display = st.text_input("Display Name", key="new_conn_display")
+        conn_desc = st.text_area("Description", key="new_conn_desc")
+        conn_type = st.selectbox("Type", ["sqlite", "postgresql", "mysql", "databricks"], key="new_conn_type")
+        conn_string = st.text_input("Connection String", key="new_conn_string", help="e.g., sqlite:///database.db or postgresql://user:password@localhost/dbname")
         
         if st.button("Add Connection"):
-            if not new_conn_name or not new_conn_string:
-                st.error("Name and connection string are required")
+            if not conn_name or not conn_display or not conn_string:
+                st.sidebar.error("Please fill in all required fields")
             else:
-                new_conn = {
-                    "name": new_conn_name,
-                    "display_name": new_conn_display or new_conn_name,
-                    "description": new_conn_desc,
-                    "type": new_conn_type,
-                    "connection_string": new_conn_string
+                new_conn_data = {
+                    "name": conn_name,
+                    "display_name": conn_display,
+                    "description": conn_desc,
+                    "type": conn_type,
+                    "connection_string": conn_string
                 }
-                
-                with st.spinner("Adding connection..."):
-                    try:
-                        add_resp = query_backend("connections/add", new_conn, method="POST")
-                        if add_resp and add_resp.get("success"):
-                            st.success(add_resp.get("message", "Connection added successfully"))
-                            # Clear the form
-                            st.session_state.new_conn_name = ""
-                            st.session_state.new_conn_display = ""
-                            st.session_state.new_conn_desc = ""
-                            st.session_state.new_conn_string = ""
-                            # Refresh connections list
-                            if "connections" in st.session_state:
-                                del st.session_state.connections
-                            st.rerun()
-                        else:
-                            st.error("Failed to add connection")
-                    except Exception as e:
-                        st.error(f"Error adding connection: {str(e)}")
+                add_resp = query_backend("/connections/add", new_conn_data, "POST")
+                if add_resp.get("success", True):
+                    st.toast(f"Added new connection: {conn_display}")
+                    st.rerun()
+                else:
+                    st.sidebar.error(add_resp.get("error", "Failed to add connection"))
     
-    with manage_tab:
-        st.write("Manage Existing Connections")
-        if "connections" in st.session_state and st.session_state.connections:
-            conn_to_delete = st.selectbox(
-                "Select Connection to Remove", 
-                [c["display_name"] for c in st.session_state.connections if c["name"] != "default"]
-            )
-            
-            if conn_to_delete:
-                conn_name = next((c["name"] for c in st.session_state.connections 
-                                if c["display_name"] == conn_to_delete), None)
-                
-                if conn_name and st.button("Delete Connection", type="primary", use_container_width=True):
-                    with st.spinner(f"Deleting {conn_to_delete}..."):
-                        try:
-                            delete_resp = query_backend(f"connections/{conn_name}", method="DELETE")
-                            if delete_resp and delete_resp.get("success"):
-                                st.success(delete_resp.get("message", "Connection deleted successfully"))
-                                # Refresh connections list
-                                if "connections" in st.session_state:
-                                    del st.session_state.connections
-                                st.rerun()
-                            else:
-                                st.error("Failed to delete connection")
-                        except Exception as e:
-                            st.error(f"Error deleting connection: {str(e)}")
+    # Main content
+    st.title("SQL Chatbot 🤖")
+    st.markdown("Ask questions about your data in natural language.")
+    
+    # Display current connection info
+    if active_conn:
+        st.subheader(f"Connected to: {active_conn.get('display_name', 'Unknown')}")
+        st.caption(active_conn.get('description', ''))
+    
+    # Query input
+    query = st.text_area("Enter your question:", height=100, placeholder="e.g., Show me the total sales by product category for last month")
+    
+    if st.button("Ask"):
+        if query:
+            with st.spinner("Processing query..."):
+                # Call the API with the query
+                response = query_backend("/query", {"question": query}, "POST")
+                display_results(response)
         else:
-            st.info("No connections available to delete")
-    
-    # Database schema section
-    st.divider()
-    st.subheader("Database Schema")
-    
-    # Fetch and display table list
-    if st.button("Refresh Database Schema"):
-        with st.spinner("Fetching database schema..."):
-            tables_response = query_backend("tables")
-            
-            if tables_response.get("tables"):
-                st.session_state.tables = tables_response.get("tables", [])
-                st.success(f"Found {len(st.session_state.tables)} tables in the database")
-            else:
-                st.error("Could not fetch database tables")
-    
-    # Display tables if available
-    if hasattr(st.session_state, "tables") and st.session_state.tables:
-        for table in st.session_state.tables:
-            with st.expander(table):
-                # Fetch schema for this table when the expander is clicked
-                schema_resp = query_backend("schema", {"table_name": table}, method="POST")
-                if schema_resp.get("schema", {}).get(table):
-                    schema_data = schema_resp["schema"][table]
-                    for col, type_info in schema_data.items():
-                        st.text(f"• {col} ({type_info})")
-                else:
-                    st.text("Could not fetch schema")
+            st.warning("Please enter a question.")
 
-# Display chat history
-st.subheader("Chat History")
-for i, chat in enumerate(st.session_state.chat_history):
-    if chat["role"] == "user":
-        st.markdown(f"**You**: {chat['content']}")
-    else:
-        if "sql" in chat:
-            with st.chat_message("assistant"):
-                st.markdown("**SQL Chatbot**:")
-                with st.expander("Generated SQL", expanded=False):
-                    st.code(chat["sql"], language="sql")
-                
-                if "data" in chat and chat["data"]:
-                    df = pd.DataFrame(chat["data"])
-                    
-                    # Show data table with expander
-                    with st.expander("Data Results", expanded=True):
-                        st.dataframe(df, use_container_width=True, hide_index=True)
-                        st.caption(f"Found {len(chat['data'])} {'row' if len(chat['data']) == 1 else 'rows'}")
-                    
-                    # Add a "Show Visualizations" button for each chat response
-                    viz_key = f"viz_btn_{i}"
-                    show_viz = False
-                    
-                    if st.button(f"Show Visualizations", key=viz_key):
-                        show_viz = True
-                    
-                    if show_viz and not df.empty:
-                        # Try to detect suitable chart type
-                        chart_type = detect_chart_type(df)
-                        
-                        # Convert any date-like strings to datetime
-                        for col in df.columns:
-                            if df[col].dtype == 'object':
-                                try:
-                                    df[col] = pd.to_datetime(df[col], errors='ignore')
-                                except:
-                                    pass
-                        
-                        # Convert numeric columns if stored as strings
-                        for col in df.columns:
-                            if df[col].dtype == 'object':
-                                try:
-                                    df[col] = pd.to_numeric(df[col], errors='ignore')
-                                except:
-                                    pass
-                        
-                        # Get numeric and categorical columns after conversion
-                        num_columns = df.select_dtypes(include=['number']).columns.tolist()
-                        cat_columns = df.select_dtypes(include=['object', 'string', 'category']).columns.tolist()
-                        
-                        # Create visualization based on detected type
-                        if chart_type != "none" and num_columns:
-                            if chart_type == "bar" and cat_columns and num_columns:
-                                cat_col = cat_columns[0]
-                                num_col = num_columns[0]
-                                st.bar_chart(df.set_index(cat_col)[num_col])
-                            
-                            elif chart_type == "line" and num_columns:
-                                line_cols = num_columns[:3]  # Limit to first 3 numeric columns
-                                st.line_chart(df[line_cols])
-                            
-                            elif chart_type == "scatter" and len(num_columns) >= 2:
-                                x_col = num_columns[0]
-                                y_col = num_columns[1]
-                                fig = {
-                                    "data": [{"type": "scatter", "x": df[x_col], "y": df[y_col]}],
-                                    "layout": {"title": f"{y_col} vs {x_col}", "xaxis": {"title": x_col}, "yaxis": {"title": y_col}}
-                                }
-                                st.plotly_chart(fig, use_container_width=True)
-                            
-                            elif chart_type == "grouped_bar" and cat_columns and len(num_columns) >= 2:
-                                cat_col = cat_columns[0]
-                                chart_data = df.set_index(cat_col)[num_columns[:3]]
-                                st.bar_chart(chart_data)
-                            
-                            elif chart_type == "histogram" and num_columns:
-                                num_col = num_columns[0]
-                                fig = {
-                                    "data": [{"type": "histogram", "x": df[num_col]}],
-                                    "layout": {"title": f"Distribution of {num_col}"}
-                                }
-                                st.plotly_chart(fig, use_container_width=True)
-                            
-                            # Show statistics
-                            with st.expander("Data Statistics"):
-                                if num_columns:
-                                    st.write("Numeric Statistics")
-                                    st.dataframe(df[num_columns].describe())
-                        else:
-                            st.info("No suitable visualization detected for this data")
-                        
-                elif "error" in chat:
-                    st.error(chat["error"])
-                else:
-                    st.info("No data returned by the query.")
-        else:
-            st.markdown(f"**SQL Chatbot**: {chat['content']}")
-
-# Input area
-st.subheader("Ask a Question")
-user_input = st.text_area("Enter your question in natural language:", 
-                           "Show me all tables in the database", 
-                           height=100)
-
-if st.button("Submit Question"):
-    if user_input:
-        # Add user message to chat history
-        st.session_state.chat_history.append({"role": "user", "content": user_input})
-        
-        # Show loading spinner
-        with st.spinner("Generating SQL and fetching results..."):
-            try:
-                # Query the backend
-                result = query_backend("query", {"question": user_input}, method="POST")
-                
-                # Log raw response for debugging
-                st.sidebar.write("Raw API Response:", result)
-                
-                # Add response to chat history
-                if result.get("success", False):
-                    chat_response = {
-                        "role": "assistant",
-                        "sql": result.get("sql", ""),
-                        "data": result.get("data", [])
-                    }
-                else:
-                    chat_response = {
-                        "role": "assistant",
-                        "content": "I couldn't process your query.",
-                        "error": result.get("error", "Unknown error")
-                    }
-                
-                st.session_state.chat_history.append(chat_response)
-            except Exception as e:
-                st.error(f"Error processing query: {str(e)}")
-                st.sidebar.error(f"Exception details: {traceback.format_exc()}")
-                
-                # Add error to chat history
-                chat_response = {
-                    "role": "assistant",
-                    "content": "I encountered an error while processing your query.",
-                    "error": str(e)
-                }
-                st.session_state.chat_history.append(chat_response)
-        
-        # Rerun to update the UI with new chat history
-        st.rerun()
-    else:
-        st.warning("Please enter a question.")
-
-# Clear chat history button
-if st.button("Clear Chat History"):
-    st.session_state.chat_history = []
-    st.rerun()
-
-# Footer
-st.markdown("---")
-st.caption("SQL Chatbot powered by LangChain, FastAPI, and Streamlit")
+if __name__ == "__main__":
+    main()

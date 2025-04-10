@@ -1,64 +1,25 @@
-from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Union
 import uvicorn
-from database import (
-    get_table_names, get_table_schema, execute_sql_query,
-    get_all_connections_info, get_active_connection_info,
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional, Union
+import os
+
+from app.database import (
+    get_table_names, get_table_schema, get_all_table_schemas,
+    execute_sql_query, get_all_connections_info, get_active_connection_info,
     connect_to_database, add_database_connection, remove_database_connection
 )
-from langchain_sql import generate_sql_query
+from app.models import generate_sql_query
+from app.api.models import (
+    QueryRequest, QueryResponse, SchemaRequest, TableListResponse,
+    SchemaResponse, DatabaseConnectionInfo, DatabaseConnectionList,
+    ActiveConnectionResponse, DatabaseConnectionRequest,
+    ConnectionSwitchRequest, MessageResponse
+)
 
 # Initialize FastAPI app
 app = FastAPI(title="SQL Chatbot API")
 
-# Define request and response models
-class QueryRequest(BaseModel):
-    question: str
-
-class QueryResponse(BaseModel):
-    success: bool
-    sql: Optional[str] = None
-    data: Optional[List[Dict[str, Any]]] = None
-    error: Optional[str] = None
-
-class SchemaRequest(BaseModel):
-    table_name: Optional[str] = None
-
-class TableListResponse(BaseModel):
-    tables: List[str]
-
-class SchemaResponse(BaseModel):
-    schema: Dict[str, Any]
-
-class DatabaseConnectionInfo(BaseModel):
-    name: str
-    display_name: str
-    description: str = ""
-    type: str
-    is_active: Optional[bool] = False
-
-class DatabaseConnectionList(BaseModel):
-    connections: List[DatabaseConnectionInfo]
-
-class ActiveConnectionResponse(BaseModel):
-    connection: DatabaseConnectionInfo
-
-class DatabaseConnectionRequest(BaseModel):
-    name: str
-    display_name: str
-    description: str = ""
-    type: str
-    connection_string: str
-
-class ConnectionSwitchRequest(BaseModel):
-    name: str
-
-class MessageResponse(BaseModel):
-    success: bool
-    message: str
-
-# API endpoints
 @app.get("/")
 async def root():
     return {"message": "SQL Chatbot API is running"}
@@ -128,7 +89,7 @@ async def list_connections():
 async def get_active_connection():
     """Get information about the active database connection"""
     connection = get_active_connection_info()
-    # Create a new dict with is_active flag instead of modifying the original
+    # Create a new dict with is_active flag for consistency with list endpoint
     connection_with_flag = {**connection, "is_active": True}
     return {"connection": connection_with_flag}
 
@@ -181,6 +142,9 @@ async def delete_connection(name: str):
         "message": f"Successfully removed database connection: {name}"
     }
 
-# Run the API with Uvicorn when the script is executed directly
+# Ensure the database directory exists
+os.makedirs("app/data", exist_ok=True)
+
+# Run the FastAPI application with Uvicorn when this script is executed directly
 if __name__ == "__main__":
-    uvicorn.run("fastapi_backend:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
