@@ -3,7 +3,14 @@
     "name": "default",
     "description": "SQLite Database",
     "type": "sqlite",
-    "connection_string": "sqlite:///sql_chatbot.db",
+    "connection_string": "sqlite:///app/data/sql_chatbot.db",
     "display_name": "SQLite Sample Database"
+  },
+  {
+    "name": "store_db",
+    "description": "Store Database with customer and product data",
+    "type": "sqlite",
+    "connection_string": "sqlite:///app/data/test_database.db",
+    "display_name": "Store Database"
   }
 ]
