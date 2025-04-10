@@ -1,145 +1,114 @@
 import os
-from langchain.chains import LLMChain
+from langchain.chains import create_sql_query_chain
 from langchain_openai import ChatOpenAI
-from langchain.prompts.chat import (
-    ChatPromptTemplate,
-    SystemMessagePromptTemplate,
-    HumanMessagePromptTemplate
-)
-from app.database.db_operations import get_all_table_schemas
+from langchain.prompts.chat import ChatPromptTemplate
+import json
 
-# the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
-# do not change this unless explicitly requested by the user
-MODEL_NAME = "gpt-4o"
+from app.database.db_operations import get_all_table_schemas
 
 def get_llm():
     """Initialize and return the language model"""
+    # Get the OpenAI API key from environment variables
     api_key = os.environ.get("OPENAI_API_KEY")
     
     if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable not set")
-        
-    return ChatOpenAI(
+        raise ValueError("OPENAI_API_KEY environment variable is not set")
+    
+    # Use the gpt-4o model, which works well for SQL generation
+    # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
+    # do not change this unless explicitly requested by the user
+    model = ChatOpenAI(
         temperature=0,
-        model=MODEL_NAME,
+        model="gpt-4o",  # Use the gpt-4o model, which is newer and has better SQL generation capability
         api_key=api_key
     )
+    
+    return model
 
 def get_table_schema_string():
     """Get database schema as a formatted string for the LLM prompt"""
-    schema_dict = get_all_table_schemas()
-    
-    if not schema_dict:
-        return "No tables found in the database."
-    
-    schema_str = "Database Schema:\n"
-    
-    for table_name, columns in schema_dict.items():
-        schema_str += f"Table: {table_name}\n"
-        schema_str += "Columns:\n"
+    try:
+        all_schemas = get_all_table_schemas()
         
-        for col_name, col_type in columns.items():
-            schema_str += f"  - {col_name} ({col_type})\n"
+        if not all_schemas:
+            return "No tables found in the database."
         
-        schema_str += "\n"
-    
-    return schema_str
+        schema_text = []
+        for table_name, columns in all_schemas.items():
+            schema_text.append(f"Table: {table_name}")
+            schema_text.append("Columns:")
+            for col_name, col_type in columns.items():
+                schema_text.append(f"  - {col_name} ({col_type})")
+            schema_text.append("")  # Empty line between tables
+        
+        return "\n".join(schema_text)
+    except Exception as e:
+        print(f"Error getting schema string: {e}")
+        return "Error: Could not retrieve database schema."
 
 def setup_sql_chain():
     """Set up the LangChain chain for SQL generation"""
-    llm = get_llm()
-    
-    # Get database schema
-    schema_str = get_table_schema_string()
-    
-    # Define the system prompt with the database schema
-    system_template = """You are an expert SQL assistant that translates natural language questions into SQL queries.
-    
-{schema}
-
-Your task is to generate a valid SQLite SQL query based on the user's question.
-- Only generate a valid SQL query, don't include any explanations or commentary
-- Don't use any tables or columns not listed in the schema
-- If you can't create a valid query from the input, explain why instead of attempting to generate SQL
-- Ensure your queries are efficient and properly formatted
-- Use appropriate joins, aggregations, or filters as needed
-- The generated SQL should be directly executable without modification
-- Make sure to follow SQLite syntax (not PostgreSQL)
-"""
-    
-    # Create the chat prompt template
-    system_message_prompt = SystemMessagePromptTemplate.from_template(system_template)
-    human_template = "{question}"
-    human_message_prompt = HumanMessagePromptTemplate.from_template(human_template)
-    
-    chat_prompt = ChatPromptTemplate.from_messages([
-        system_message_prompt,
-        human_message_prompt
-    ])
-    
-    # Create the chain
-    chain = LLMChain(
-        llm=llm,
-        prompt=chat_prompt,
-        verbose=True
-    )
-    
-    return chain
+    try:
+        llm = get_llm()
+        
+        # Get the database schema
+        db_schema = get_table_schema_string()
+        
+        # Create a custom prompt that includes the database schema and instructions
+        prompt = ChatPromptTemplate.from_template(
+            """You are a SQL expert. Given the following database schema and a question, 
+            your job is to write a SQL query that answers the question.
+            
+            Database Schema:
+            {db_schema}
+            
+            Instructions:
+            - Always use valid SQLite syntax
+            - Use only the tables and columns provided in the schema
+            - Add comments to explain complex parts of the query
+            - For any aggregated results, use clear aliases
+            - Do not use placeholders for table names or column names
+            - Your response should contain only the SQL query, nothing else
+            - The database is case-insensitive
+            
+            User Question: {question}
+            
+            SQL Query:"""
+        )
+        
+        # Create the SQL chain
+        chain = create_sql_query_chain(llm, prompt)
+        
+        return chain, db_schema
+    except Exception as e:
+        print(f"Error setting up SQL chain: {e}")
+        return None, str(e)
 
 def generate_sql_query(user_question):
     """Generate SQL from natural language question"""
     try:
-        chain = setup_sql_chain()
-        schema = get_table_schema_string()
+        chain, db_schema = setup_sql_chain()
         
-        if "No tables found" in schema:
+        if not chain:
             return {
                 "success": False,
-                "error": "No database tables found. Please ensure your database is properly configured and contains data."
+                "error": f"Failed to initialize language model: {db_schema}"
             }
         
-        # Generate SQL query
-        result = chain.invoke({"schema": schema, "question": user_question})
-        generated_sql = result["text"].strip()
+        # Generate the SQL query using the chain
+        sql_query = chain.invoke({
+            "question": user_question,
+            "db_schema": db_schema
+        })
         
-        # Clean up the SQL - remove markdown formatting if present
-        if generated_sql.startswith("```"):
-            # Remove markdown code block syntax
-            lines = generated_sql.split("\n")
-            # Remove the first line if it contains ```
-            if "```" in lines[0]:
-                lines = lines[1:]
-            # Remove the last line if it contains ```
-            if lines and "```" in lines[-1]:
-                lines = lines[:-1]
-            generated_sql = "\n".join(lines).strip()
-        
-        # Further cleanup: remove "sql" if it appears alone on the first line
-        lines = generated_sql.split("\n")
-        if lines and lines[0].strip().lower() in ["sql", "postgresql", "psql"]:
-            lines = lines[1:]
-            generated_sql = "\n".join(lines).strip()
-        
-        # Check if it's a valid SQL query
-        # If the LLM explained why it can't generate SQL, handle that case
-        if (
-            "cannot generate" in generated_sql.lower() or
-            "unable to create" in generated_sql.lower() or
-            "can't create" in generated_sql.lower() or 
-            "i can't" in generated_sql.lower()
-        ):
-            return {
-                "success": False,
-                "error": generated_sql
-            }
-        
+        # Return successful result
         return {
-            "success": True, 
-            "sql": generated_sql
+            "success": True,
+            "sql": sql_query
         }
-    
     except Exception as e:
+        print(f"Error generating SQL: {e}")
         return {
             "success": False,
-            "error": f"Error generating SQL query: {str(e)}"
+            "error": f"Failed to generate SQL query: {str(e)}"
         }
